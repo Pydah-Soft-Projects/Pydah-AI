@@ -1,7 +1,7 @@
-# Pydah AI - Core LLM Console Service
+# Pydah AI - Core LLM Console & API Service
 
 This repository provides the core, modular AI integration layer for PydahSoft applications. 
-The current phase implements a direct console-based interactive client powered by OpenRouter LLMs.
+It supports both an interactive console terminal client and a high-performance FastAPI REST API service.
 
 ---
 
@@ -17,16 +17,20 @@ pydah-ai/
 │   ├── __init__.py
 │   ├── config.py         # Configuration loading & validation
 │   ├── llm_client.py     # OpenRouter API communication adapter
-│   └── console.py        # Terminal interface & message context management
+│   ├── console.py        # Terminal interface & message context management
+│   ├── schemas.py        # Pydantic request & response schemas
+│   └── api.py            # FastAPI service application & routes
 ├── tests/
 │   ├── __init__.py
 │   ├── test_config.py    # Unit tests for configuration logic
 │   ├── test_llm_client.py# Unit tests for LLM client request/error handling
-│   └── test_console.py   # Unit tests for conversation history truncation
+│   ├── test_console.py   # Unit tests for conversation history truncation
+│   └── test_api.py       # Unit tests for REST API endpoints
 ├── .env.example          # Environment variables template
 ├── .gitignore            # Git exclusion rules
 ├── requirements.txt      # Project dependencies
-├── main.py               # Application entry point
+├── main.py               # Console application entry point
+├── server.py             # REST API server entry point
 └── README.md             # Setup and usage guide
 ```
 
@@ -39,10 +43,10 @@ pydah-ai/
    cp .env.example .env
    ```
 
-2. Open `.env` and set your OpenRouter API key:
+2. Open `.env` and set your OpenRouter API key and desired model:
    ```env
    OPENROUTER_API_KEY=your_actual_openrouter_api_key
-   OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
+   OPENROUTER_MODEL=nvidia/nemotron-3.5-lightning:free
    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions
    REQUEST_TIMEOUT_SECONDS=30
    MAX_HISTORY_MESSAGES=10
@@ -52,7 +56,7 @@ pydah-ai/
 
 ## 3. Setup Instructions
 
-### Create and Activate Virtual Environment
+### Virtual Environment Setup
 
 **On Windows:**
 ```cmd
@@ -74,41 +78,98 @@ pip install -r requirements.txt
 
 ---
 
-## 4. Running the Console Application
+## 4. Running the Application
 
-Start the interactive session:
+### Option A: Interactive Console Interface
+
+Start the terminal console session:
 
 ```bash
 python main.py
 ```
 
-### Example Console Session:
+### Option B: FastAPI REST API Server
 
-```text
-============================================================
- Welcome to Pydah AI Assistant Console
- Configured Model: google/gemini-2.0-flash-lite-preview-02-05:free
- Type 'exit' or 'quit' to close the session.
-============================================================
+Start the API service server:
 
-User > What is artificial intelligence?
-Pydah AI > Artificial intelligence (AI) refers to the simulation of human intelligence in machines...
+```bash
+python server.py
+```
 
-User > My name is Durga.
-Pydah AI > Nice to meet you, Durga! How can I assist you today?
+The server will launch at `http://localhost:8000`.
 
-User > What is my name?
-Pydah AI > Your name is Durga.
+* **Health Endpoint:** `GET http://localhost:8000/health`
+* **Chat Endpoint:** `POST http://localhost:8000/api/v1/chat`
+* **Interactive Swagger UI Documentation:** `http://localhost:8000/docs`
 
-User > exit
-Exiting Pydah AI Console. Goodbye!
+---
+
+## 5. REST API Usage Examples
+
+### Health Check Request
+
+```bash
+curl -X GET "http://localhost:8000/health"
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "ai-core-service-api"
+}
+```
+
+### Chat Completion Request
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/chat" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "message": "What is artificial intelligence?",
+       "conversation_id": "session-101"
+     }'
+```
+
+**Successful Response (200 OK):**
+```json
+{
+  "success": true,
+  "answer": "Artificial intelligence (AI) is the intelligence of machines or software...",
+  "model": "nvidia/nemotron-3.5-lightning:free",
+  "conversation_id": "session-101"
+}
+```
+
+### Chat Request with Multi-turn Context History
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/chat" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "message": "What is my name?",
+       "history": [
+         {"role": "user", "content": "My name is Durga."},
+         {"role": "assistant", "content": "Nice to meet you, Durga!"}
+       ]
+     }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "answer": "Your name is Durga.",
+  "model": "nvidia/nemotron-3.5-lightning:free",
+  "conversation_id": null
+}
 ```
 
 ---
 
-## 5. Running Automated Tests
+## 6. Running Automated Tests
 
-Run the unit test suite without needing external API calls:
+Run all unit tests (for configuration, LLM client, console app, and FastAPI endpoints):
 
 ```bash
 python -m unittest discover -s tests
