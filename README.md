@@ -32,10 +32,39 @@ This repository contains the central **Pydah AI Engine (`pydah-ai`)**, providing
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Core Principles:
-- **`pydah-ai` Central Backend:** Understands the question, selects the right tool, dispatches the tool call to the application with the user's token, and generates the final natural language answer.
-- **Application Backend:** Defines AI-facing tools in an `ai_integration/` folder, wraps existing application business logic/services, and enforces data access permissions.
-- **CDN Chat UI:** Renders the chat interface, sends questions & `assistant_id`, and displays responses.
+---
+
+## 📋 Checklist for Application Developers: What Your Application Backend Must Handle
+
+When connecting your application backend (Student Portal, Fee, Transport, HRMS) to `pydah-ai`, make sure your backend handles the following 6 requirements:
+
+### 1. Expose the `/execute-tool` Route
+- Register a `POST` route at `/execute-tool` (or `/api/v1/execute-tool` or `/ai_integration/execute-tool`).
+- `pydah-ai` sends a `POST` request to this endpoint whenever the LLM requests data from your application.
+
+### 2. Handle Flexible Authentication Extraction
+- Extract the user's Bearer token flexibly. `pydah-ai` sends the token in:
+  - Header: `Authorization: Bearer <token>`
+  - Header: `x-access-token` / `x-user-token`
+  - Body: `req.body.token` or `req.body.user_context.delegated_access_token`
+- Verify the token using your application's existing JWT / Session authentication middleware.
+
+### 3. Support Tool Name Aliases & String Normalization
+- The LLM might generate tool function names with slight variations (e.g. `get_my_student_profile`, `get_student_profile`, `get_profile`, `fetch_student_profile`).
+- Map these function name variations to your tool execution handler (e.g. normalize string case and hyphens).
+
+### 4. Authenticate & Scope Record Permissions (Record Security)
+- Decode the student/user ID from the verified Bearer token.
+- Ensure students can **only access their own data** (record-level permission check).
+- Never allow unauthenticated queries or arbitrary student IDs without permission verification.
+
+### 5. Reuse Existing Application Services
+- Do **NOT** rewrite database queries or calculation logic.
+- Call your existing controllers/services (e.g. `StudentService.getProfile(studentId)` or `FeeService.getPendingDues(studentId)`).
+
+### 6. Return Clean JSON Data
+- Return structured JSON (e.g. `{ "full_name": "...", "roll_number": "...", "attendance": 87.5 }`).
+- If no record is found, return a clear JSON response `{ "error": "No records found" }` with HTTP 200 or 404 instead of returning HTML error pages.
 
 ---
 
@@ -65,26 +94,11 @@ pydah-ai/
 └── README.md                    # System guide & integration documentation
 ```
 
-### Module Responsibilities inside `pydah-ai`:
-
-| File Path | Responsibility |
-| :--- | :--- |
-| **`src/api.py`** | Receives `/api/v1/chat` requests from CDN chat UI. |
-| **`src/assistants/config.py`** | Defines each assistant (`fee-assistant`, `student-assistant`, `transport-assistant`) and its permitted tool list. |
-| **`src/tools/registry.py`** | Describes available tools and parameter schemas to the OpenRouter LLM. |
-| **`src/tools/executor.py`** | Validates permission scope and calls the target application when a tool is selected. |
-| **`src/services/llm_service.py`** | Coordinates OpenRouter model requests, executes tool loops, and generates final answers. |
-| **`src/security/auth.py`** | Validates user identity and extracts delegated Bearer tokens. |
-
 ---
 
 ## 3. Integration Guide for Other Application Teams
 
-To connect an existing application (Fee Management, Transport, Student Portal, HRMS, etc.) to the central AI system, **you do NOT need an LLM or separate AI engine inside your application**.
-
-Simply add an `ai_integration/` folder inside your backend codebase.
-
-### Application Folder Structure
+To connect an existing application to the central AI system, add an `ai_integration/` folder inside your backend codebase:
 
 ```text
 your-application/backend/
@@ -99,61 +113,10 @@ your-application/backend/
 
 ---
 
-### File Responsibilities in Your Application:
+### Implementation Code Examples for Application Teams
 
-#### 1. `tools.py` (or `tools.js`)
-Wraps your existing application services. Reuse your existing data access functions rather than recreating calculation logic.
+#### Node.js Express Example (`ai_integration/routes.js` & `tools.js`):
 
-**Python Example (`tools.py`):**
-```python
-# ai_integration/tools.py
-from services.fee_service import FeeService
-
-async def get_my_pending_dues(user_context: dict, academic_year: str = None):
-    # Retrieve student identity from trusted user context
-    student_id = user_context["user_id"]
-    
-    # Call existing fee calculation service
-    return await FeeService.get_pending_dues(
-        student_id=student_id,
-        academic_year=academic_year
-    )
-```
-
-**Node.js Example (`tools.js`):**
-```javascript
-// ai_integration/tools.js
-const FeeService = require('../services/FeeService');
-
-async function get_my_pending_dues(userContext, args) {
-  const studentId = userContext.userId;
-  const academicYear = args.academic_year;
-
-  // Call existing application service
-  return await FeeService.getPendingDues(studentId, academicYear);
-}
-
-module.exports = { get_my_pending_dues };
-```
-
----
-
-#### 2. `permissions.py` (or `permissions.js`)
-Enforces record-level security so users can access only their authorized data.
-
-```python
-# ai_integration/permissions.py
-def check_student_access(user_context: dict, target_student_id: str):
-    if user_context["role"] == "student" and user_context["user_id"] != target_student_id:
-        raise PermissionError("Access denied: You can only query your own student records.")
-```
-
----
-
-#### 3. `routes.py` (or `routes.js`)
-Exposes a single `/execute-tool` endpoint for `pydah-ai` to dispatch tool calls.
-
-**Node.js Express Example (`routes.js`):**
 ```javascript
 // ai_integration/routes.js
 const express = require('express');
@@ -162,15 +125,18 @@ const { authenticateUser } = require('../middleware/auth');
 const tools = require('./tools');
 
 router.post('/execute-tool', authenticateUser, async (req, res) => {
-  const { tool_name, arguments: args } = req.body;
+  const toolName = (req.body.tool_name || req.body.function_name || '').toLowerCase();
+  const args = req.body.arguments || {};
   const userContext = { userId: req.user.id, role: req.user.role };
 
   try {
-    if (typeof tools[tool_name] === 'function') {
-      const data = await tools[tool_name](userContext, args);
+    // Map tool aliases to tools handler
+    const handler = tools[toolName] || tools.resolveAlias(toolName);
+    if (typeof handler === 'function') {
+      const data = await handler(userContext, args);
       return res.json(data);
     }
-    return res.status(404).json({ error: `Tool ${tool_name} not supported` });
+    return res.status(404).json({ error: `Tool '${toolName}' not found in application` });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -179,7 +145,8 @@ router.post('/execute-tool', authenticateUser, async (req, res) => {
 module.exports = router;
 ```
 
-**Python FastAPI Example (`routes.py`):**
+#### Python FastAPI Example (`ai_integration/routes.py` & `tools.py`):
+
 ```python
 # ai_integration/routes.py
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -190,11 +157,11 @@ router = APIRouter(tags=["AI Integration"])
 
 @router.post("/execute-tool")
 async def execute_tool(payload: dict, current_user=Depends(get_authenticated_user)):
-    tool_name = payload.get("tool_name")
+    tool_name = payload.get("tool_name", "").lower()
     args = payload.get("arguments", {})
     user_context = {"user_id": current_user.id, "role": current_user.role}
 
-    handler = getattr(tools, tool_name, None)
+    handler = getattr(tools, tool_name, None) or tools.resolve_alias(tool_name)
     if not handler:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
 
@@ -209,32 +176,13 @@ async def execute_tool(payload: dict, current_user=Depends(get_authenticated_use
 In `pydah-ai/.env`, configure the base service URLs for your application backends:
 
 ```env
-# OpenRouter Config
-OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
+# Server Configuration
+PORT=8000
+REQUEST_TIMEOUT_SECONDS=30
+MAX_HISTORY_MESSAGES=10
 
-# Application Backend Service URLs (Where /execute-tool is dispatched)
+# Application Backend Service Base URLs (Where /execute-tool is dispatched)
 STUDENT_SERVICE_URL=http://localhost:3001
 FEE_SERVICE_URL=http://localhost:3002
 TRANSPORT_SERVICE_URL=http://localhost:3003
-```
-
----
-
-## 5. Running & Verifying `pydah-ai`
-
-### Start the Server:
-```bash
-python server.py
-```
-
-### Test Assistant API via Curl:
-```bash
-curl -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_VALID_AUTH_TOKEN" \
-  -d '{
-    "message": "What is my attendance percentage?",
-    "assistant_id": "student-assistant"
-  }'
 ```

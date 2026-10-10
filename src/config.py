@@ -11,7 +11,7 @@ class ConfigError(Exception):
 def load_env_file(filepath: str = ".env") -> None:
     """
     Parse a simple .env file manually into os.environ if present.
-    Will not overwrite existing environment variables.
+    Overwrites existing process environment variables so .env always takes priority.
     """
     if not os.path.exists(filepath):
         return
@@ -26,10 +26,9 @@ def load_env_file(filepath: str = ".env") -> None:
                     key, val = line.split("=", 1)
                     key = key.strip()
                     val = val.strip().strip("'\"")
-                    if key and key not in os.environ:
+                    if key:
                         os.environ[key] = val
     except Exception:
-        # Ignore issues reading .env file gracefully
         pass
 
 
@@ -37,15 +36,15 @@ def load_env_file(filepath: str = ".env") -> None:
 class Config:
     api_key: str
     model: str
+    provider: str = "openrouter"  # "openrouter" or "google_gemini"
     base_url: str = "https://openrouter.ai/api/v1/chat/completions"
     timeout_seconds: int = 30
     max_history_messages: int = 10
 
     def __repr__(self) -> str:
-        # Safely hide API key in string representation
         masked_key = f"{self.api_key[:4]}...{self.api_key[-4:]}" if len(self.api_key) > 8 else "***"
         return (
-            f"Config(model='{self.model}', base_url='{self.base_url}', "
+            f"Config(provider='{self.provider}', model='{self.model}', base_url='{self.base_url}', "
             f"timeout={self.timeout_seconds}s, max_history={self.max_history_messages}, "
             f"api_key='{masked_key}')"
         )
@@ -56,24 +55,35 @@ class Config:
         if env_path:
             load_env_file(env_path)
 
-        api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-        model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-lite-preview-02-05:free").strip()
-        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1/chat/completions").strip()
+        gemini_key = os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()
+        openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
         
+        provider = "openrouter"
+        api_key = ""
+        model = ""
+        base_url = ""
+
+        # Priority 1: Direct Google Gemini API Key
+        if gemini_key:
+            provider = "google_gemini"
+            api_key = gemini_key
+            model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+            clean_model = model.replace("models/", "")
+            base_url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent"
+        # Priority 2: OpenRouter API Key
+        elif openrouter_key:
+            provider = "openrouter"
+            api_key = openrouter_key
+            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-lite-preview-02-05:free").strip()
+            base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1/chat/completions").strip()
+        else:
+            raise ConfigError(
+                "Missing required API key configuration. "
+                "Please set GEMINI_API_KEY (from Google Developer Console / AI Studio) or OPENROUTER_API_KEY in your .env file."
+            )
+
         timeout_str = os.getenv("REQUEST_TIMEOUT_SECONDS", "30").strip()
         max_history_str = os.getenv("MAX_HISTORY_MESSAGES", "10").strip()
-
-        if not api_key:
-            raise ConfigError(
-                "Missing required configuration: 'OPENROUTER_API_KEY'. "
-                "Please set OPENROUTER_API_KEY in your environment or .env file."
-            )
-
-        if not model:
-            raise ConfigError(
-                "Missing required configuration: 'OPENROUTER_MODEL'. "
-                "Please set OPENROUTER_MODEL in your environment or .env file."
-            )
 
         try:
             timeout_seconds = int(timeout_str)
@@ -88,6 +98,7 @@ class Config:
         return cls(
             api_key=api_key,
             model=model,
+            provider=provider,
             base_url=base_url,
             timeout_seconds=timeout_seconds,
             max_history_messages=max_history_messages
