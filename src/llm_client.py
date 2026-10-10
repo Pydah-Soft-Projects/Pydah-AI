@@ -1,7 +1,7 @@
 import json
 import urllib.request
 import urllib.error
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from src.config import Config
 
 
@@ -16,24 +16,33 @@ class LLMClient:
     def __init__(self, config: Config):
         self.config = config
 
-    def generate_response(self, messages: List[Dict[str, str]]) -> str:
+    def generate_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
         """
-        Send chat completion request to OpenRouter API and return generated text answer.
+        Send chat completion request to OpenRouter API and return full choice message dict.
+        Supports OpenAI/OpenRouter tool definitions.
 
-        :param messages: List of message objects with 'role' and 'content' keys.
-        :return: Extracted answer string from assistant.
-        :raises LLMError: If request fails, times out, or returns invalid response.
+        :param messages: List of message objects.
+        :param tools: Optional list of tool definitions.
+        :return: Dict representing assistant's message object ({role, content, tool_calls}).
         """
-        payload = {
+        payload: Dict[str, Any] = {
             "model": self.config.model,
             "messages": messages
         }
+
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
 
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://pydahsoft.com",
-            "X-Title": "Pydah AI Console"
+            "X-Title": "Pydah AI Engine"
         }
 
         data_bytes = json.dumps(payload).encode("utf-8")
@@ -52,7 +61,7 @@ class LLMClient:
                 if status_code != 200:
                     raise LLMError(f"OpenRouter API returned HTTP status {status_code}.")
 
-                return self._extract_content(response_body)
+                return self._extract_choice_message(response_body)
 
         except urllib.error.HTTPError as e:
             error_body = ""
@@ -83,8 +92,14 @@ class LLMClient:
                 raise e
             raise LLMError(f"An unexpected error occurred during LLM communication: {str(e)}") from e
 
-    def _extract_content(self, response_json_str: str) -> str:
-        """Parse raw JSON response from OpenRouter and extract content string."""
+    def generate_response(self, messages: List[Dict[str, Any]]) -> str:
+        """Backwards compatible string response generator."""
+        msg_choice = self.generate_completion(messages)
+        content = msg_choice.get("content")
+        return (content or "").strip()
+
+    def _extract_choice_message(self, response_json_str: str) -> Dict[str, Any]:
+        """Parse raw JSON response from OpenRouter and extract full message choice dictionary."""
         try:
             data = json.loads(response_json_str)
             choices = data.get("choices", [])
@@ -92,12 +107,7 @@ class LLMClient:
                 raise LLMError("OpenRouter response contained no completion choices.")
             
             message = choices[0].get("message", {})
-            content = message.get("content")
-
-            if content is None:
-                raise LLMError("OpenRouter response choice contains empty or null message content.")
-            
-            return content.strip()
+            return message
         except json.JSONDecodeError as e:
             raise LLMError("Received invalid non-JSON response from OpenRouter API.") from e
 

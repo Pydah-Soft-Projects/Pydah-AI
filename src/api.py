@@ -1,20 +1,22 @@
 from typing import List, Dict
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import Config, ConfigError
 from src.llm_client import LLMClient, LLMError
 from src.schemas import ChatRequest, ChatResponse, ErrorResponse
-from src.console import DEFAULT_SYSTEM_PROMPT
+from src.security.auth import get_user_context
+from src.services.llm_service import run_assistant_chat
+from src.assistants.config import ASSISTANTS_CONFIG
 
 app = FastAPI(
-    title="AI Core Service API",
-    description="Centralized AI engine API providing unified LLM integrations.",
-    version="1.0.0"
+    title="Pydah AI Core Engine API",
+    description="Centralized multi-assistant AI engine with tool-calling capabilities.",
+    version="1.1.0"
 )
 
-# Enable CORS for frontend clients (React/Next.js/Dashboard apps)
+# Enable CORS for frontend clients
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,12 +24,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def get_llm_client() -> LLMClient:
-    """Initialize configuration and LLM client lazily for requests."""
-    config = Config.load()
-    return LLMClient(config)
 
 
 @app.get(
@@ -40,14 +36,34 @@ def health_check():
     """Health check endpoint to verify backend service status."""
     return {
         "status": "healthy",
-        "service": "ai-core-service-api"
+        "service": "pydah-ai-core-engine"
+    }
+
+
+@app.get(
+    "/api/v1/assistants",
+    tags=["Assistants"],
+    summary="List Registered Assistants",
+)
+def list_assistants():
+    """Returns available assistant personas and descriptions."""
+    return {
+        "assistants": [
+            {
+                "id": a.id,
+                "name": a.name,
+                "description": a.description,
+                "allowed_tools": a.allowed_tools
+            }
+            for a in ASSISTANTS_CONFIG.values()
+        ]
     }
 
 
 @app.post(
     "/api/v1/chat",
     tags=["Chat Completions"],
-    summary="Generate Chat Response",
+    summary="Generate Assistant Response with Tool Calling",
     response_model=ChatResponse,
     responses={
         400: {"model": ErrorResponse, "description": "Invalid input or configuration"},
@@ -56,43 +72,30 @@ def health_check():
         500: {"model": ErrorResponse, "description": "Internal server error or LLM failure"},
     }
 )
-def chat_completion(request: ChatRequest):
+def chat_completion(chat_req: ChatRequest, request: Request):
     """
-    Accept user question and conversation context, process via OpenRouter LLM, 
-    and return normalized assistant response.
+    Accept user question, assistant_id, and conversation context.
+    Extracts security token context, executes permitted tool calls, and returns answer.
     """
     try:
         config = Config.load()
         client = LLMClient(config)
+        user_context = get_user_context(request=request, payload=chat_req)
 
-        # 1. System Prompt
-        system_text = request.system_prompt or DEFAULT_SYSTEM_PROMPT
-        messages: List[Dict[str, str]] = [{"role": "system", "content": system_text}]
-
-        # 2. Add client-supplied history
-        if request.history:
-            for item in request.history:
-                if item.role in ("user", "assistant", "system"):
-                    messages.append({"role": item.role, "content": item.content})
-
-        # 3. Append latest user query
-        messages.append({"role": "user", "content": request.message})
-
-        # 4. History size truncation
-        system_msg = messages[0]
-        conversation = messages[1:]
-        if len(conversation) > config.max_history_messages:
-            conversation = conversation[-config.max_history_messages:]
-        final_messages = [system_msg] + conversation
-
-        # 5. Call LLM Client
-        answer = client.generate_response(final_messages)
+        answer, executed_tools, assistant_id = run_assistant_chat(
+            payload=chat_req,
+            user_context=user_context,
+            config=config,
+            client=client
+        )
 
         return ChatResponse(
             success=True,
             answer=answer,
             model=config.model,
-            conversation_id=request.conversation_id
+            assistant_id=assistant_id,
+            conversation_id=chat_req.conversation_id,
+            executed_tools=executed_tools
         )
 
     except ConfigError as e:
