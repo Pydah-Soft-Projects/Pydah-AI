@@ -103,30 +103,39 @@ class LLMClient:
                     "parts": [{"text": content}]
                 })
             elif role == "assistant":
-                parts = []
-                if content:
-                    parts.append({"text": content})
-                if msg.get("tool_calls"):
-                    for call in msg["tool_calls"]:
-                        fn = call.get("function", {})
-                        parts.append({
-                            "functionCall": {
-                                "name": fn.get("name"),
-                                "args": json.loads(fn.get("arguments", "{}")) if isinstance(fn.get("arguments"), str) else fn.get("arguments", {})
-                            }
-                        })
-                if parts:
-                    gemini_contents.append({"role": "model", "parts": parts})
+                # Preserve exact original Gemini parts to retain thought_signature and functionCall integrity
+                if msg.get("gemini_parts"):
+                    gemini_contents.append({"role": "model", "parts": msg["gemini_parts"]})
+                else:
+                    parts = []
+                    if content:
+                        parts.append({"text": content})
+                    if msg.get("tool_calls"):
+                        for call in msg["tool_calls"]:
+                            fn = call.get("function", {})
+                            raw_args = fn.get("arguments", {})
+                            parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                            parts.append({
+                                "functionCall": {
+                                    "name": fn.get("name"),
+                                    "args": parsed_args if isinstance(parsed_args, dict) else {}
+                                }
+                            })
+                    if parts:
+                        gemini_contents.append({"role": "model", "parts": parts})
+
             elif role == "tool":
-                # Convert tool output message to Gemini functionResponse
                 tool_name = msg.get("name", "tool")
                 try:
                     resp_dict = json.loads(content) if isinstance(content, str) else content
                 except Exception:
                     resp_dict = {"output": content}
 
+                if not isinstance(resp_dict, dict):
+                    resp_dict = {"response": resp_dict}
+
                 gemini_contents.append({
-                    "role": "function",
+                    "role": "user",
                     "parts": [{
                         "functionResponse": {
                             "name": tool_name,
@@ -181,7 +190,7 @@ class LLMClient:
         return choices[0].get("message", {})
 
     def _extract_gemini_choice(self, response_json_str: str) -> Dict[str, Any]:
-        """Normalize Google Gemini response payload into OpenAI/OpenRouter message dict format."""
+        """Normalize Google Gemini response payload into OpenAI/OpenRouter message dict format while preserving original parts."""
         data = json.loads(response_json_str)
         candidates = data.get("candidates", [])
         if not candidates:
@@ -210,7 +219,8 @@ class LLMClient:
 
         result_msg: Dict[str, Any] = {
             "role": "assistant",
-            "content": text_content.strip()
+            "content": text_content.strip(),
+            "gemini_parts": parts  # Preserve exact raw parts for multi-turn functionCall continuity
         }
 
         if tool_calls:
