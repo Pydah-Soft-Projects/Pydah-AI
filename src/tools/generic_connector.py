@@ -37,6 +37,17 @@ TOOL_SERVICE_MAPPING: Dict[str, str] = {
     "get_academic_performance": "STUDENT_SERVICE_URL",
     "student_marks": "STUDENT_SERVICE_URL",
 
+    # Timetable / Class Schedule Aliases -> STUDENT_SERVICE_URL
+    "get_my_timetable": "STUDENT_SERVICE_URL",
+    "get_my_time_table": "STUDENT_SERVICE_URL",
+    "get_student_timetable": "STUDENT_SERVICE_URL",
+    "get_timetable": "STUDENT_SERVICE_URL",
+    "get_time_table": "STUDENT_SERVICE_URL",
+    "fetch_timetable": "STUDENT_SERVICE_URL",
+    "student_timetable": "STUDENT_SERVICE_URL",
+    "get_class_schedule": "STUDENT_SERVICE_URL",
+    "get_schedule": "STUDENT_SERVICE_URL",
+
     # Fee & Dues Aliases -> FEE_SERVICE_URL
     "get_my_fee_summary": "FEE_SERVICE_URL",
     "get_my_pending_dues": "FEE_SERVICE_URL",
@@ -75,7 +86,7 @@ def dispatch_tool_to_application(
 
     if not env_var_name:
         # Fallback to STUDENT_SERVICE_URL if tool contains student keywords
-        if "student" in clean_tool_name or "profile" in clean_tool_name or "attendance" in clean_tool_name or "marks" in clean_tool_name:
+        if any(k in clean_tool_name for k in ["student", "profile", "attendance", "marks", "grade", "timetable", "time_table", "schedule"]):
             env_var_name = "STUDENT_SERVICE_URL"
         elif "fee" in clean_tool_name or "due" in clean_tool_name:
             env_var_name = "FEE_SERVICE_URL"

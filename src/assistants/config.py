@@ -36,9 +36,9 @@ DEFAULT_TRANSPORT_SYSTEM_PROMPT = (
 DEFAULT_STUDENT_SYSTEM_PROMPT = (
     "You are the Pydah Student Portal Assistant. Help authenticated students check "
     "their personal profile details, enrolled department/branch, attendance breakdown, "
-    "grade reports, and academic standing. "
+    "grade reports, class timetable / daily schedule, and academic standing. "
     "CRITICAL MANDATE: Whenever the user asks for their name, who they are, profile, roll number, "
-    "attendance percentage, or academic grades, NEVER guess or reply conversationally. "
+    "attendance percentage, academic grades, or class timetable / schedule, NEVER guess or reply conversationally. "
     "You MUST call the corresponding student tool immediately to fetch their official records."
 )
 
@@ -50,7 +50,9 @@ STUDENT_ALLOWED_TOOLS = [
     "get_my_attendance_summary", "get_student_attendance", "get_my_attendance", "get_attendance",
     "fetch_attendance", "student_attendance", "get_attendance_summary",
     "get_my_academic_marks", "get_student_marks", "get_my_marks", "get_marks",
-    "get_internal_marks", "get_grades", "get_academic_performance", "student_marks"
+    "get_internal_marks", "get_grades", "get_academic_performance", "student_marks",
+    "get_my_timetable", "get_my_time_table", "get_student_timetable", "get_timetable",
+    "get_time_table", "fetch_timetable", "student_timetable", "get_class_schedule", "get_schedule"
 ]
 
 FEE_ALLOWED_TOOLS = [

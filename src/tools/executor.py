@@ -4,7 +4,8 @@ from src.tools.generic_connector import dispatch_tool_to_application, TOOL_SERVI
 from src.tools.handlers.student_tools import (
     get_my_student_profile,
     get_my_attendance_summary,
-    get_my_academic_marks
+    get_my_academic_marks,
+    get_my_timetable
 )
 from src.tools.handlers.fee_tools import get_my_fee_summary, get_my_pending_dues
 from src.tools.handlers.transport_tools import get_my_bus_details, get_my_route
@@ -19,6 +20,8 @@ FALLBACK_HANDLERS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Dict[str
     "get_my_student_profile": get_my_student_profile,
     "get_my_attendance_summary": get_my_attendance_summary,
     "get_my_academic_marks": get_my_academic_marks,
+    "get_my_timetable": get_my_timetable,
+    "get_my_time_table": get_my_timetable,
     "get_my_fee_summary": get_my_fee_summary,
     "get_my_pending_dues": get_my_pending_dues,
     "get_my_bus_details": get_my_bus_details,

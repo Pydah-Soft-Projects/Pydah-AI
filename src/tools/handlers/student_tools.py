@@ -119,3 +119,45 @@ def get_my_academic_marks(arguments: Dict[str, Any], user_context: Dict[str, Any
             {"subject": "Software Engineering", "grade": "A", "grade_points": 9}
         ]
     }
+
+
+def get_my_timetable(arguments: Dict[str, Any], user_context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Fetch the authenticated student's weekly schedule / timetable.
+    """
+    student_service_url = os.getenv("STUDENT_SERVICE_URL", "").strip()
+    token = user_context.get("delegated_access_token")
+
+    if student_service_url:
+        endpoint = f"{student_service_url.rstrip('/')}/api/ai/timetable"
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        try:
+            req = urllib.request.Request(endpoint, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            return {
+                "error": f"Unable to fetch timetable from Student Backend ({student_service_url})",
+                "details": str(e)
+            }
+
+    day = arguments.get("day") or "Monday"
+    return {
+        "student_id": user_context.get("user_id") or "STU-2025-0842",
+        "branch": "Computer Science & Engineering",
+        "section": "CSE-B",
+        "semester": "Semester 6",
+        "day": day,
+        "schedule": [
+            {"period": 1, "time": "09:00 AM - 10:00 AM", "subject": "Artificial Intelligence", "faculty": "Dr. K. Srinivas", "room": "CS-301"},
+            {"period": 2, "time": "10:00 AM - 11:00 AM", "subject": "Data Mining & Warehousing", "faculty": "Prof. M. Rama Devi", "room": "CS-301"},
+            {"period": 3, "time": "11:15 AM - 12:15 PM", "subject": "Web Technologies", "faculty": "Mr. P. V. Suresh", "room": "CS-301"},
+            {"period": 4, "time": "01:00 PM - 02:00 PM", "subject": "Library / Seminar", "faculty": "Staff", "room": "Library"},
+            {"period": 5, "time": "02:00 PM - 04:00 PM", "subject": "AI & ML Lab", "faculty": "Dr. K. Srinivas / Lab Asst", "room": "Lab-2"}
+        ]
+    }
+

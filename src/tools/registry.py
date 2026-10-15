@@ -44,6 +44,48 @@ ALL_TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
             }
         }
     },
+    "get_my_timetable": {
+        "type": "function",
+        "function": {
+            "name": "get_my_timetable",
+            "description": "Fetch the authenticated student's weekly timetable, daily class schedule, periods, subjects, assigned faculty, and room locations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day": {
+                        "type": "string",
+                        "description": "Optional day of the week filter, e.g., 'Monday', 'Tuesday', 'today'."
+                    },
+                    "semester": {
+                        "type": "string",
+                        "description": "Optional semester filter, e.g., 'Semester 6' or 'current'."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    "get_my_time_table": {
+        "type": "function",
+        "function": {
+            "name": "get_my_time_table",
+            "description": "Fetch the authenticated student's weekly timetable, daily class schedule, periods, subjects, assigned faculty, and room locations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day": {
+                        "type": "string",
+                        "description": "Optional day of the week filter, e.g., 'Monday', 'Tuesday', 'today'."
+                    },
+                    "semester": {
+                        "type": "string",
+                        "description": "Optional semester filter, e.g., 'Semester 6' or 'current'."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
 
     # Fee Assistant Tools
     "get_my_fee_summary": {
