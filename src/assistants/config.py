@@ -34,50 +34,49 @@ DEFAULT_TRANSPORT_SYSTEM_PROMPT = (
 )
 
 DEFAULT_STUDENT_SYSTEM_PROMPT = (
-    "You are the Pydah Student Portal Assistant. Help authenticated students check "
-    "their personal profile details, enrolled department/branch, attendance breakdown, "
-    "grade reports, class timetable / daily schedule, and academic standing. "
-    "CRITICAL MANDATE: Whenever the user asks for their name, who they are, profile, roll number, "
-    "attendance percentage, academic grades, or class timetable / schedule, NEVER guess or reply conversationally. "
-    "You MUST call the corresponding student tool immediately to fetch their official records."
+    "You are the Pydah Portal Assistant. You assist authenticated users including students, "
+    "faculty, and administrative staff. You have access to real-time tools provided by the portal backend. "
+    "CRITICAL MANDATE: Whenever answering queries regarding user profiles, attendance, grades, "
+    "class timetables, daily schedules, fees, student clubs, club members, club activities, faculty details, or institutional records, NEVER guess or reply conversationally without data. "
+    "You MUST call the corresponding tool immediately to fetch authentic records before formulating your response. "
+    "Format tabular breakdowns cleanly using markdown tables when multiple items or records are returned."
 )
 
 
-# Allowed tools list including standard names and common aliases
-STUDENT_ALLOWED_TOOLS = [
-    "get_my_student_profile", "get_student_profile", "get_my_profile", "get_profile",
-    "fetch_student_profile", "student_profile", "get_user_profile", "get_student_details", "get_my_details",
-    "get_my_attendance_summary", "get_student_attendance", "get_my_attendance", "get_attendance",
-    "fetch_attendance", "student_attendance", "get_attendance_summary",
-    "get_my_academic_marks", "get_student_marks", "get_my_marks", "get_marks",
-    "get_internal_marks", "get_grades", "get_academic_performance", "student_marks",
-    "get_my_timetable", "get_my_time_table", "get_student_timetable", "get_timetable",
-    "get_time_table", "fetch_timetable", "student_timetable", "get_class_schedule", "get_schedule"
-]
+# Allowed tools list: wildcard '*' dynamically discovers and permits all tools from the portal backend
+PORTAL_ALLOWED_TOOLS = ["*"]
 
-FEE_ALLOWED_TOOLS = [
-    "get_my_fee_summary", "get_my_pending_dues", "get_student_fees", "get_my_fees",
-    "get_pending_dues", "get_fee_details", "get_fees", "fetch_pending_dues", "student_fees"
-]
-
-TRANSPORT_ALLOWED_TOOLS = [
-    "get_my_bus_details", "get_my_route", "get_student_transport", "get_my_transport",
-    "get_transport", "student_transport"
-]
+STUDENT_ALLOWED_TOOLS = PORTAL_ALLOWED_TOOLS
+FEE_ALLOWED_TOOLS = PORTAL_ALLOWED_TOOLS
+TRANSPORT_ALLOWED_TOOLS = PORTAL_ALLOWED_TOOLS
 
 
 ASSISTANTS_CONFIG: Dict[str, AssistantConfig] = {
     "general-assistant": AssistantConfig(
         id="general-assistant",
-        name="Pydah AI General Assistant",
-        description="General assistant for institution queries and overall guidance.",
-        system_prompt=DEFAULT_GENERAL_SYSTEM_PROMPT,
-        allowed_tools=[]
+        name="Pydah AI Assistant",
+        description="General institutional and portal assistant with tool execution access.",
+        system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
+        allowed_tools=["*"]
     ),
     "student-assistant": AssistantConfig(
         id="student-assistant",
-        name="Student Portal Assistant",
-        description="Handles student profile details, attendance records, and academic grade summaries.",
+        name="Pydah Portal & Student Assistant",
+        description="Handles portal queries for students, faculty, and staff with real-time tool execution.",
+        system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
+        allowed_tools=STUDENT_ALLOWED_TOOLS
+    ),
+    "admin-assistant": AssistantConfig(
+        id="admin-assistant",
+        name="Pydah Admin Assistant",
+        description="Handles administration queries, portal overview statistics, student records, and institutional data with real-time tool execution.",
+        system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
+        allowed_tools=STUDENT_ALLOWED_TOOLS
+    ),
+    "portal-assistant": AssistantConfig(
+        id="portal-assistant",
+        name="Pydah Portal & Student Assistant",
+        description="Handles portal queries for students, faculty, and staff with real-time tool execution.",
         system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
         allowed_tools=STUDENT_ALLOWED_TOOLS
     ),

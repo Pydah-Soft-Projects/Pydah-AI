@@ -1,8 +1,14 @@
 import os
+import time
 import json
 import urllib.request
 import urllib.error
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
+
+
+# In-memory manifest cache: { service_url: (timestamp, tools_list) }
+_MANIFEST_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+CACHE_TTL_SECONDS = 60.0  # Refresh tools from portal every 60 seconds
 
 
 # Comprehensive Tool Service Mapping including function name aliases
@@ -69,10 +75,132 @@ TOOL_SERVICE_MAPPING: Dict[str, str] = {
 }
 
 
+def fetch_application_tools(
+    service_url: Optional[str] = None,
+    user_context: Optional[Dict[str, Any]] = None,
+    force_refresh: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Dynamically discover available tools from an application backend.
+    Queries the host portal (e.g. Student / Campus Portal) manifest endpoint:
+      - /ai-tools
+      - /api/v1/ai-tools
+      - /ai/tools
+      - /api/ai/manifest
+      - /execute-tool/manifest
+    
+    Returns normalized tool definitions to feed directly into the LLM.
+    Caches results in memory for CACHE_TTL_SECONDS to avoid latency on every turn.
+    """
+    target_url = service_url or os.getenv("STUDENT_SERVICE_URL") or os.getenv("APPLICATION_SERVICE_URL")
+    if not target_url:
+        return []
+
+    target_url = target_url.strip().rstrip('/')
+    now = time.time()
+
+    # Check in-memory cache
+    if not force_refresh and target_url in _MANIFEST_CACHE:
+        cached_time, cached_tools = _MANIFEST_CACHE[target_url]
+        if (now - cached_time) < CACHE_TTL_SECONDS:
+            return cached_tools
+
+    token = user_context.get("delegated_access_token") if user_context else None
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        headers["x-access-token"] = token
+        headers["x-user-token"] = token
+    if user_context and user_context.get("role"):
+        headers["x-user-role"] = str(user_context.get("role"))
+
+    manifest_paths = [
+        "/ai-tools",
+        "/api/v1/ai-tools",
+        "/ai/tools",
+        "/api/ai/manifest",
+        "/execute-tool/manifest",
+        "/ai_integration/tools"
+    ]
+
+    discovered_tools: List[Dict[str, Any]] = []
+
+    for path in manifest_paths:
+        url = f"{target_url}{path}"
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    raw_data = json.loads(resp.read().decode("utf-8"))
+                    raw_list = []
+                    if isinstance(raw_data, list):
+                        raw_list = raw_data
+                    elif isinstance(raw_data, dict):
+                        raw_list = (
+                            raw_data.get("tools") or 
+                            raw_data.get("functions") or 
+                            raw_data.get("manifest") or 
+                            raw_data.get("data") or 
+                            []
+                        )
+
+                    # Normalize into standard OpenAI tool function schema
+                    for item in raw_list:
+                        normalized = _normalize_manifest_tool(item)
+                        if normalized:
+                            discovered_tools.append(normalized)
+
+                    if discovered_tools:
+                        # Successfully discovered tools; store in cache
+                        _MANIFEST_CACHE[target_url] = (now, discovered_tools)
+                        return discovered_tools
+        except Exception:
+            continue
+
+    return discovered_tools
+
+
+def _normalize_manifest_tool(tool_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Normalizes arbitrary portal tool declarations into OpenAI-compatible tool definitions.
+    Supports:
+      - Standard OpenAI format: { "type": "function", "function": { "name": ..., ... } }
+      - Simple manifest format: { "name": "...", "description": "...", "parameters": { ... } }
+    """
+    if not isinstance(tool_item, dict):
+        return None
+
+    # Already in { "type": "function", "function": { ... } } format
+    if tool_item.get("type") == "function" and "function" in tool_item:
+        return tool_item
+
+    # Simple { "name": ..., "description": ..., "parameters": ... } format
+    name = tool_item.get("name")
+    if not name or not isinstance(name, str):
+        return None
+
+    return {
+        "type": "function",
+        "function": {
+            "name": name.strip(),
+            "description": tool_item.get("description", f"Execute {name}"),
+            "parameters": tool_item.get("parameters") or {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+
+
 def dispatch_tool_to_application(
     tool_name: str,
     arguments: Dict[str, Any],
-    user_context: Dict[str, Any]
+    user_context: Dict[str, Any],
+    target_service_url: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Robust Tool Dispatcher:
@@ -84,22 +212,24 @@ def dispatch_tool_to_application(
     clean_tool_name = tool_name.strip().lower()
     env_var_name = TOOL_SERVICE_MAPPING.get(clean_tool_name) or TOOL_SERVICE_MAPPING.get(tool_name)
 
-    if not env_var_name:
-        # Fallback to STUDENT_SERVICE_URL if tool contains student keywords
-        if any(k in clean_tool_name for k in ["student", "profile", "attendance", "marks", "grade", "timetable", "time_table", "schedule"]):
-            env_var_name = "STUDENT_SERVICE_URL"
-        elif "fee" in clean_tool_name or "due" in clean_tool_name:
-            env_var_name = "FEE_SERVICE_URL"
-        elif "bus" in clean_tool_name or "transport" in clean_tool_name or "route" in clean_tool_name:
-            env_var_name = "TRANSPORT_SERVICE_URL"
-        else:
-            return {"error": f"No application service mapping configured for tool '{tool_name}'"}
+    base_url = target_service_url
 
-    base_url = os.getenv(env_var_name, "").strip()
+    if not base_url:
+        if env_var_name:
+            base_url = os.getenv(env_var_name, "").strip()
+        else:
+            # Fallback priority: STUDENT_SERVICE_URL -> APPLICATION_SERVICE_URL
+            if any(k in clean_tool_name for k in ["fee", "due", "payment", "receipt"]):
+                base_url = os.getenv("FEE_SERVICE_URL", "").strip()
+            elif any(k in clean_tool_name for k in ["bus", "transport", "route", "driver"]):
+                base_url = os.getenv("TRANSPORT_SERVICE_URL", "").strip()
+            else:
+                base_url = os.getenv("STUDENT_SERVICE_URL", "").strip() or os.getenv("APPLICATION_SERVICE_URL", "").strip()
+
     if not base_url:
         return {
             "status": "dev_mock",
-            "message": f"Service URL environment variable '{env_var_name}' is not configured in .env",
+            "message": f"Service URL for tool '{tool_name}' is not configured in .env",
             "dispatched_tool": tool_name,
             "arguments": arguments,
             "user_id": user_context.get("user_id") or "STU-2025-0842"
@@ -117,6 +247,17 @@ def dispatch_tool_to_application(
         headers["Authorization"] = f"Bearer {token}"
         headers["x-access-token"] = token
         headers["x-user-token"] = token
+
+    if user_context.get("user_id"):
+        headers["x-user-id"] = str(user_context.get("user_id"))
+    if user_context.get("role"):
+        headers["x-user-role"] = str(user_context.get("role"))
+
+    # Also forward any additional incoming x-* headers
+    custom_headers = user_context.get("headers", {})
+    for k, v in custom_headers.items():
+        if k not in headers:
+            headers[k] = str(v)
 
     payload = {
         "tool_name": tool_name,

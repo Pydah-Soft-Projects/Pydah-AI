@@ -1,34 +1,38 @@
 # Pydah AI - Central GenAI Engine & Application Integration Guide
 
-This repository contains the central **Pydah AI Engine (`pydah-ai`)**, providing unified GenAI orchestration, multi-assistant personas, tool selection, and secure tool execution across PydahSoft applications (Fee Management, Transport, Student Portal, HRMS, etc.).
+This repository contains the central **Pydah AI Engine (`pydah-ai`)**, providing unified GenAI orchestration, multi-assistant personas, tool selection, and secure tool execution across PydahSoft applications (Student Portal, Campus Portal, Fee Management, Transport, etc.).
+
+> 📘 **Looking to integrate an application backend?** Check out the full step-by-step developer guide:  
+> **👉 [Portal Developer Integration Guide](docs/PORTAL_INTEGRATION_GUIDE.md)**
 
 ---
 
-## 1. System Architecture & Division of Responsibilities
+## 1. System Architecture & Zero-Touch Self-Describing Tool Manifest
+
+With our **Self-Describing Manifest architecture**, application developers **never have to touch `pydah-ai` code** to add new tools or queries. The application portal backend is the single source of truth for its functions and permissions.
 
 ```
                                ┌────────────────────────────────┐
                                │  CDN Chat UI / Host Application│
                                └───────────────┬────────────────┘
-                                               │ ChatRequest + assistant_id + Bearer Token
+                                               │ ChatRequest + Bearer Token
                                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │ pydah-ai (Central AI Backend)                                                           │
-│  ├── src/api.py                 -> Receives chat requests from CDN UI                   │
-│  ├── src/assistants/config.py   -> Defines assistants & their allowed tools             │
-│  ├── src/tools/registry.py      -> Tool schemas & parameters for OpenRouter LLM         │
+│  ├── src/api.py                 -> Receives chat requests from UI                       │
+│  ├── src/tools/generic_connector.py -> Auto-discovers tools: GET /ai-tools             │
+│  ├── src/services/llm_service.py-> Orchestrates tool-calling with Gemini / OpenRouter   │
 │  ├── src/tools/executor.py      -> Dispatches tool execution to target application APIs │
-│  ├── src/services/llm_service.py-> Handles multi-turn tool calling loop with OpenRouter │
-│  └── src/security/auth.py       -> Extracts user security token context                 │
+│  └── src/security/auth.py       -> Extracts & delegates user JWT token context          │
 └──────────────────────────────┬──────────────────────────────────────────────────────────┘
-                               │ Dispatches: POST /execute-tool (tool_name, args, Bearer token)
+                               │ 1. GET /ai-tools (Dynamic tool discovery)
+                               │ 2. POST /execute-tool (tool_name, args, Bearer token)
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│ Each Existing Application Backend (Fee, Transport, Student Portal, HRMS, etc.)           │
-│  └── ai_integration/                                                                    │
-│       ├── tools.py / tools.js        -> Wraps existing app services to fetch data        │
-│       ├── permissions.py / perm.js   -> Verifies student/user access permissions        │
-│       └── routes.py / routes.js      -> Exposes /execute-tool API endpoint for pydah-ai│
+│ Existing Application Backend (Student Portal / Campus System)                           │
+│  ├── GET /ai-tools              -> Self-describing list of tools (functions + params)   │
+│  ├── POST /execute-tool         -> Executes DB queries & validates user permissions     │
+│  └── Services & Controllers     -> Existing business logic (Student/Faculty/Admin)      │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

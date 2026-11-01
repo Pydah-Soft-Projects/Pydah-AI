@@ -1,0 +1,134 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to AWS Lightsail
+    runs-on: ubuntu-latest
+
+    steps:
+      #################################################
+      # Checkout code
+      #################################################
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      #################################################
+      # Configure SSH
+      #################################################
+      - name: Configure SSH
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SERVER_IP }}" >> ~/.ssh/known_hosts
+
+      #################################################
+      # Deploy to AWS Lightsail Server
+      #################################################
+      - name: Deploy to server
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SSH_USER: ${{ secrets.SSH_USER || 'ec2-user' }}
+        run: |
+          set -e
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes \
+            "${SSH_USER}@${SERVER_IP}" << 'ENDSSH'
+
+          set -e
+
+          # Detect home directory and project path
+          PROJECT_DIR="$HOME/Pydah-AI"
+
+          echo "=========================================="
+          echo "Starting Pydah AI API Deployment"
+          echo "=========================================="
+
+          # Check if project directory exists, if not clone it
+          if [ ! -d "${PROJECT_DIR}" ]; then
+            echo "==> Project directory not found. Creating ${PROJECT_DIR}..."
+            mkdir -p "${PROJECT_DIR}"
+            git clone https://github.com/${{ github.repository }}.git "${PROJECT_DIR}"
+          fi
+
+          cd "${PROJECT_DIR}"
+
+          echo "==> Pulling latest code from main..."
+          git fetch origin main
+          git checkout main
+          git pull origin main
+
+          #################################################
+          # PYTHON VIRTUALENV & DEPENDENCIES
+          #################################################
+          echo "==> Checking Python dependencies..."
+          LOCK_HASH_FILE="${PROJECT_DIR}/.requirements-lockhash"
+          CURRENT_HASH="$(sha256sum requirements.txt 2>/dev/null | sha256sum | awk '{print $1}')"
+          PREV_HASH="$(cat "${LOCK_HASH_FILE}" 2>/dev/null || true)"
+
+          if [ ! -d "${PROJECT_DIR}/.venv" ] || [ "${CURRENT_HASH}" != "${PREV_HASH}" ]; then
+            echo "==> Updating Python virtualenv and installing dependencies..."
+            if [ ! -d "${PROJECT_DIR}/.venv" ]; then
+              python3 -m venv "${PROJECT_DIR}/.venv"
+            fi
+            "${PROJECT_DIR}/.venv/bin/pip" install --upgrade pip
+            "${PROJECT_DIR}/.venv/bin/pip" install -r requirements.txt
+            echo "${CURRENT_HASH}" > "${LOCK_HASH_FILE}"
+          else
+            echo "==> Python dependencies unchanged, skipping pip install"
+          fi
+
+          mkdir -p "${PROJECT_DIR}/logs"
+
+          #################################################
+          # SYSTEMD SERVICE CONFIGURATION & RESTART
+          #################################################
+          echo "==> Configuring and restarting systemd service..."
+          if [ ! -f "/etc/systemd/system/pydah-ai.service" ]; then
+            echo "==> Initializing systemd service via scripts/setup-service.sh..."
+            chmod +x "${PROJECT_DIR}/scripts/setup-service.sh"
+            bash "${PROJECT_DIR}/scripts/setup-service.sh"
+          else
+            echo "==> Restarting pydah-ai service..."
+            sudo systemctl daemon-reload
+            sudo systemctl restart pydah-ai
+          fi
+
+          #################################################
+          # HEALTH CHECK VERIFICATION
+          #################################################
+          echo "==> Verifying API health check..."
+          sleep 3
+
+          if curl -f -s http://127.0.0.1:8000/health > /dev/null; then
+            echo "==> Health check passed! Pydah AI API is healthy."
+          else
+            echo "==> Health check failed! Showing service logs:"
+            sudo journalctl -u pydah-ai -n 40 --no-pager
+            exit 1
+          fi
+
+          echo "=========================================="
+          echo "Pydah AI Deployment completed successfully"
+          echo "=========================================="
+
+          ENDSSH
+
+      #################################################
+      # Cleanup SSH key
+      #################################################
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+

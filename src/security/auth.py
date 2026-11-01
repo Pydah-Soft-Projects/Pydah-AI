@@ -1,3 +1,5 @@
+import json
+import base64
 from typing import Dict, Any, Optional
 from fastapi import Request
 from src.schemas import ChatRequest
@@ -14,9 +16,33 @@ def extract_bearer_token(authorization_header: Optional[str]) -> Optional[str]:
     return None
 
 
+def safe_decode_jwt_claims(token: Optional[str]) -> Dict[str, Any]:
+    """
+    Safely inspect unverified JWT claims to extract user identity and role
+    when explicit headers (x-user-id, x-user-role) are not provided by client.
+    Note: Strict cryptographic verification is always enforced by the application backend.
+    """
+    if not token or "." not in token:
+        return {}
+    
+    try:
+        parts = token.split(".")
+        if len(parts) == 3:
+            payload_segment = parts[1]
+            rem = len(payload_segment) % 4
+            if rem > 0:
+                payload_segment += "=" * (4 - rem)
+            decoded = base64.urlsafe_b64decode(payload_segment.encode("utf-8"))
+            return json.loads(decoded.decode("utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
 def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRequest] = None) -> Dict[str, Any]:
     """
     Extract authenticated user context and delegated access token from HTTP request headers or payload.
+    Supports students, faculty, and administrative staff seamlessly.
     Ensures secure data retrieval delegation when invoking application tool APIs.
     """
     token: Optional[str] = None
@@ -27,8 +53,15 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
     if request is not None:
         auth_header = request.headers.get("authorization")
         token = extract_bearer_token(auth_header)
-        user_id = request.headers.get("x-user-id") or request.headers.get("x-student-id")
-        role = request.headers.get("x-user-role", "student")
+        
+        user_id = (
+            request.headers.get("x-user-id") or
+            request.headers.get("x-student-id") or
+            request.headers.get("x-faculty-id") or
+            request.headers.get("x-admin-id") or
+            request.headers.get("x-employee-id")
+        )
+        role = request.headers.get("x-user-role") or request.headers.get("x-role")
         
         # Copy safe headers for potential service-to-service forwarding
         for k, v in request.headers.items():
@@ -39,9 +72,17 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
     if not token and payload and payload.user_token:
         token = payload.user_token
 
+    # If user_id or role wasn't explicitly supplied in headers, inspect JWT payload claims
+    if token and (not user_id or not role):
+        claims = safe_decode_jwt_claims(token)
+        if not user_id:
+            user_id = claims.get("user_id") or claims.get("student_id") or claims.get("sub") or claims.get("id")
+        if not role:
+            role = claims.get("role") or claims.get("user_role") or claims.get("type")
+
     return {
         "delegated_access_token": token,
         "user_id": user_id,
-        "role": role,
+        "role": role or "user",
         "headers": headers_dict
     }

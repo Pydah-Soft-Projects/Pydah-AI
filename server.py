@@ -19,5 +19,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Starting API Server with default configuration ({e})")
 
-    uvicorn.run("src.api:app", host="0.0.0.0", port=port)
+    uvicorn.run("src.api:app", host="0.0.0.0", port=port, reload=True)
 

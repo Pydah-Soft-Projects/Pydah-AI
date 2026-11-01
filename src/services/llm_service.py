@@ -5,6 +5,7 @@ from src.llm_client import LLMClient
 from src.schemas import ChatRequest
 from src.assistants.resolver import resolve_assistant
 from src.tools.registry import get_tool_schemas
+from src.tools.generic_connector import fetch_application_tools
 from src.tools.executor import execute_tool, ToolExecutionError
 
 
@@ -18,9 +19,11 @@ def run_assistant_chat(
     Core GenAI Orchestration Loop:
     1. Resolve assistant persona & allowed tool scope.
     2. Format prompt context and apply sliding history window truncation.
-    3. Query OpenRouter model with allowed tool schemas.
-    4. If model requests tool calls, validate, execute via tool executor, and send results back.
-    5. Generate final natural language response.
+    3. Discover dynamic tools from the host application portal manifest (e.g. Student/Campus Portal)
+       and merge with permitted tool schemas.
+    4. Query LLM model (Google Gemini or OpenRouter) with tool schemas.
+    5. If model requests tool calls, validate, execute via tool executor, and send results back.
+    6. Generate final natural language response.
 
     :return: Tuple of (final_answer, executed_tool_names, resolved_assistant_id)
     """
@@ -53,8 +56,21 @@ def run_assistant_chat(
         conversation = conversation[-config.max_history_messages:]
     final_messages = [system_msg] + conversation
 
-    # 3. Retrieve Permitted Tool Schemas
-    tool_schemas = get_tool_schemas(allowed_tools) if allowed_tools else None
+    # 3. Discover Dynamic Tools from connected host application (Student / Campus Portal)
+    dynamic_tools = fetch_application_tools(user_context=user_context)
+    dynamic_tool_names = [
+        t.get("function", {}).get("name") or t.get("name")
+        for t in dynamic_tools
+        if isinstance(t, dict) and (t.get("function", {}).get("name") or t.get("name"))
+    ]
+
+    # Combine static schemas with discovered dynamic tools
+    tool_schemas = get_tool_schemas(
+        allowed_tool_names=allowed_tools,
+        dynamic_tools=dynamic_tools
+    )
+    if not tool_schemas:
+        tool_schemas = None
 
     # 4. Generate Initial Completion
     assistant_choice = client.generate_completion(final_messages, tools=tool_schemas)
@@ -90,7 +106,8 @@ def run_assistant_chat(
                     tool_name=tool_name,
                     arguments=args,
                     user_context=user_context,
-                    allowed_tools=allowed_tools
+                    allowed_tools=allowed_tools,
+                    dynamic_tool_names=dynamic_tool_names
                 )
                 executed_tools.append(tool_name)
                 output_str = json.dumps(tool_output)

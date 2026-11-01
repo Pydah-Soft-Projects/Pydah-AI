@@ -1,168 +1,72 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+
+# Dynamic Self-Describing Tool Architecture:
+# All tool schemas are dynamically discovered at runtime from the connected application backend (GET /ai-tools).
+# No static/hardcoded tool definitions are maintained here.
+ALL_TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {}
 
 
-ALL_TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
-    # Student Assistant Tools
-    "get_my_student_profile": {
+def normalize_tool_schema(tool_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Ensure any tool schema conforms to OpenAI / Gemini function definition format."""
+    if not isinstance(tool_item, dict):
+        return None
+
+    # Already valid { "type": "function", "function": { "name": ... } }
+    if tool_item.get("type") == "function" and "function" in tool_item:
+        return tool_item
+
+    name = tool_item.get("name")
+    if not name or not isinstance(name, str):
+        return None
+
+    return {
         "type": "function",
         "function": {
-            "name": "get_my_student_profile",
-            "description": "Fetch student profile details including name, roll number, department, semester, email, phone, and guardian info.",
-            "parameters": {
+            "name": name.strip(),
+            "description": tool_item.get("description", f"Execute {name}"),
+            "parameters": tool_item.get("parameters") or {
                 "type": "object",
                 "properties": {},
-                "required": []
-            }
-        }
-    },
-    "get_my_attendance_summary": {
-        "type": "function",
-        "function": {
-            "name": "get_my_attendance_summary",
-            "description": "Fetch student attendance percentage, total classes held/attended, subject breakdown, and exam eligibility status.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    },
-    "get_my_academic_marks": {
-        "type": "function",
-        "function": {
-            "name": "get_my_academic_marks",
-            "description": "Fetch academic grades, CGPA, SGPA, and subject grade breakdown for the authenticated student.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "semester": {
-                        "type": "string",
-                        "description": "Optional semester filter, e.g., 'Semester 5' or 'latest'."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    "get_my_timetable": {
-        "type": "function",
-        "function": {
-            "name": "get_my_timetable",
-            "description": "Fetch the authenticated student's weekly timetable, daily class schedule, periods, subjects, assigned faculty, and room locations.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "day": {
-                        "type": "string",
-                        "description": "Optional day of the week filter, e.g., 'Monday', 'Tuesday', 'today'."
-                    },
-                    "semester": {
-                        "type": "string",
-                        "description": "Optional semester filter, e.g., 'Semester 6' or 'current'."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    "get_my_time_table": {
-        "type": "function",
-        "function": {
-            "name": "get_my_time_table",
-            "description": "Fetch the authenticated student's weekly timetable, daily class schedule, periods, subjects, assigned faculty, and room locations.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "day": {
-                        "type": "string",
-                        "description": "Optional day of the week filter, e.g., 'Monday', 'Tuesday', 'today'."
-                    },
-                    "semester": {
-                        "type": "string",
-                        "description": "Optional semester filter, e.g., 'Semester 6' or 'current'."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-
-    # Fee Assistant Tools
-    "get_my_fee_summary": {
-        "type": "function",
-        "function": {
-            "name": "get_my_fee_summary",
-            "description": "Fetch overall fee breakdown, total paid amount, balance due, and due date for the authenticated student.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "academic_year": {
-                        "type": "string",
-                        "description": "Optional academic year string, e.g., '2025-2026' or 'current'."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    "get_my_pending_dues": {
-        "type": "function",
-        "function": {
-            "name": "get_my_pending_dues",
-            "description": "Fetch itemized pending dues list and due dates for the authenticated student.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "category": {
-                        "type": "string",
-                        "description": "Optional category filter, e.g., 'tuition', 'library', 'transport'."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-
-    # Transport Assistant Tools
-    "get_my_bus_details": {
-        "type": "function",
-        "function": {
-            "name": "get_my_bus_details",
-            "description": "Fetch assigned bus number, route name, seat number, driver contact, and pickup point timing.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    },
-    "get_my_route": {
-        "type": "function",
-        "function": {
-            "name": "get_my_route",
-            "description": "Fetch full transport route stop list and schedule timings.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "route_id": {
-                        "type": "string",
-                        "description": "Optional route identifier."
-                    }
-                },
                 "required": []
             }
         }
     }
-}
 
 
-def get_tool_schemas(allowed_tool_names: List[str]) -> List[Dict[str, Any]]:
+def get_tool_schemas(
+    allowed_tool_names: Optional[List[str]] = None,
+    dynamic_tools: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
     """
-    Return list of OpenAPI/OpenRouter function schemas matching permitted tool names.
-    Ensures strict enforcement: non-permitted tool schemas are omitted from LLM prompt context.
+    Return list of OpenAPI/OpenRouter function schemas matching permitted tool names and discovered dynamic tools.
+    - If allowed_tool_names is None or contains "*", all relevant tools are permitted.
+    - Merges statically defined tools with dynamically discovered application tools.
+    - Deduplicates by function name (dynamic tools take priority over static schemas).
     """
-    schemas = []
-    for name in allowed_tool_names:
-        if name in ALL_TOOL_SCHEMAS:
-            schemas.append(ALL_TOOL_SCHEMAS[name])
-    return schemas
+    merged_tools: Dict[str, Dict[str, Any]] = {}
+
+    # 1. Add static schemas if permitted
+    allow_all = not allowed_tool_names or "*" in allowed_tool_names
+    allowed_set = set(allowed_tool_names) if allowed_tool_names else set()
+
+    for name, schema in ALL_TOOL_SCHEMAS.items():
+        if allow_all or name in allowed_set:
+            norm_schema = normalize_tool_schema(schema)
+            if norm_schema:
+                fn_name = norm_schema["function"]["name"]
+                merged_tools[fn_name] = norm_schema
+
+    # 2. Add dynamically discovered tools from application backend
+    if dynamic_tools:
+        for dyn_tool in dynamic_tools:
+            norm_tool = normalize_tool_schema(dyn_tool)
+            if not norm_tool:
+                continue
+
+            fn_name = norm_tool["function"]["name"]
+
+            # Allow if allow_all or explicitly whitelisted
+            if allow_all or fn_name in allowed_set:
+                merged_tools[fn_name] = norm_tool
+
+    return list(merged_tools.values())

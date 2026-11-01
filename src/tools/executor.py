@@ -17,6 +17,21 @@ class ToolExecutionError(Exception):
 
 
 FALLBACK_HANDLERS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]] = {
+    # Clean non-student-centric tool names
+    "get_student_profile": get_my_student_profile,
+    "get_profile": get_my_student_profile,
+    "get_attendance_summary": get_my_attendance_summary,
+    "get_student_attendance": get_my_attendance_summary,
+    "get_student_marks": get_my_academic_marks,
+    "get_academic_marks": get_my_academic_marks,
+    "get_class_timetable": get_my_timetable,
+    "get_student_timetable": get_my_timetable,
+    "get_student_fees": get_my_fee_summary,
+    "get_fee_details": get_my_fee_summary,
+    "get_pending_dues": get_my_pending_dues,
+    "get_student_transport": get_my_bus_details,
+    "get_transport": get_my_bus_details,
+    # Backward compatible aliases
     "get_my_student_profile": get_my_student_profile,
     "get_my_attendance_summary": get_my_attendance_summary,
     "get_my_academic_marks": get_my_academic_marks,
@@ -33,39 +48,53 @@ def execute_tool(
     tool_name: str,
     arguments: Dict[str, Any],
     user_context: Dict[str, Any],
-    allowed_tools: Optional[List[str]] = None
+    allowed_tools: Optional[List[str]] = None,
+    dynamic_tool_names: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Pure Tool Dispatcher Executor:
-    1. Enforces permission check (tool must be allowed for persona).
-    2. Dispatches (tool_name, arguments, user_token) to target application's single /execute-tool endpoint.
-    3. Application executes tool on its side and returns data.
+    1. Enforces permission check (allowed if tool is in allowed_tools, '*' is present, or tool was discovered dynamically).
+    2. Dispatches (tool_name, arguments, user_token) to target application's /execute-tool endpoint.
+    3. Application executes tool on its side and returns structured JSON data.
     """
-    if allowed_tools is not None and tool_name not in allowed_tools:
+    is_allowed = False
+    if allowed_tools is None or "*" in allowed_tools:
+        is_allowed = True
+    elif tool_name in allowed_tools:
+        is_allowed = True
+    elif dynamic_tool_names and tool_name in dynamic_tool_names:
+        is_allowed = True
+
+    if not is_allowed:
         raise ToolExecutionError(
             f"Security Policy Violation: Tool '{tool_name}' is not permitted for this assistant persona."
         )
 
     # 1. Dispatch tool execution to target application runner
-    if tool_name in TOOL_SERVICE_MAPPING:
-        result = dispatch_tool_to_application(tool_name, arguments, user_context)
-        # Fallback to local dev handler if service URL is not set in environment
-        if isinstance(result, dict) and result.get("status") == "dev_mock":
-            handler = FALLBACK_HANDLERS.get(tool_name)
-            if handler:
-                return handler(arguments, user_context)
+    result = dispatch_tool_to_application(tool_name, arguments, user_context)
+    
+    # If the service URL is not configured or in dev mock mode, check for local dev fallback handler
+    if isinstance(result, dict) and result.get("status") == "dev_mock":
+        handler = FALLBACK_HANDLERS.get(tool_name)
+        if handler:
+            return handler(arguments, user_context)
         return result
 
-    # 2. Local Fallback Handler Execution
-    handler = FALLBACK_HANDLERS.get(tool_name)
-    if handler is None:
-        raise ToolExecutionError(f"No application mapping or fallback handler found for tool: '{tool_name}'")
+    # If dispatch succeeded or returned application error, return it
+    if "error" not in result or ("error" in result and tool_name not in FALLBACK_HANDLERS):
+        return result
 
-    try:
-        if inspect.iscoroutinefunction(handler):
-            import asyncio
-            return asyncio.run(handler(arguments=arguments, user_context=user_context))
-        else:
-            return handler(arguments=arguments, user_context=user_context)
-    except Exception as e:
-        raise ToolExecutionError(f"Error executing tool '{tool_name}': {str(e)}") from e
+    # 2. Local Fallback Handler Execution (if application dispatch failed and local fallback exists)
+    handler = FALLBACK_HANDLERS.get(tool_name)
+    if handler is not None:
+        try:
+            if inspect.iscoroutinefunction(handler):
+                import asyncio
+                return asyncio.run(handler(arguments=arguments, user_context=user_context))
+            else:
+                return handler(arguments=arguments, user_context=user_context)
+        except Exception:
+            pass
+
+    return result
+
