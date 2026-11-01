@@ -359,60 +359,115 @@ async def execute_tool(request: Request):
 
 ---
 
-## 6. How to Connect in Your `.env`
+## 6. Environment Configuration (.env): Testing vs. Production
 
 In `pydah-ai/.env`:
-Set your portal's URL:
 
+### 🧪 Local Testing Mode:
 ```env
-# Point to your running portal backend
-STUDENT_SERVICE_URL=http://localhost:3001
-# (Or APPLICATION_SERVICE_URL=http://localhost:3001)
+# Point to your locally running portal backend
+STUDENT_SERVICE_URL=http://localhost:5002
+# (Or APPLICATION_SERVICE_URL=http://localhost:5002)
+
+PORT=8000
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+### 🚀 Production Mode (AWS Lightsail):
+```env
+# Point to your live production portal backend (must be HTTPS or internal VPC)
+STUDENT_SERVICE_URL=https://student.pydah.edu.in
+# (Or APPLICATION_SERVICE_URL=https://student.pydah.edu.in)
+
+PORT=8000
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 `pydah-ai` will:
-1. Check `http://localhost:3001/ai-tools` automatically.
-2. Present those tools to the Gemini / OpenRouter model.
-3. Call `http://localhost:3001/execute-tool` with the user's token whenever a query requires it.
+1. Auto-discover available tools from `{STUDENT_SERVICE_URL}/ai-tools`.
+2. Present those tools to the Gemini model.
+3. Call `{STUDENT_SERVICE_URL}/execute-tool` with the user's Bearer token whenever data is needed.
 
 ---
 
-## 7. Frontend Integration (Embedding the Chat Widget)
+## 7. Frontend CDN Integration: Testing vs. Production
 
-To add the AI widget into your portal web pages:
+### 🧪 Mode A: Local Testing Mode (Localhost)
 
-### Option 1: Script Tag Embed (HTML / PHP / Vanilla JS)
+If you are developing or testing on your local machine:
+
 ```html
-<!-- Include Widget UMD Script & CSS -->
-<link rel="stylesheet" href="https://your-cdn.com/pydah-ai-chat-ui/dist/style.css" />
-<script src="https://your-cdn.com/pydah-ai-chat-ui/dist/index.umd.js"></script>
+<!-- Local Testing Script Tag Embed -->
+<link rel="stylesheet" href="http://localhost:5173/src/index.css" />
+<!-- Or use local dist: <link rel="stylesheet" href="http://localhost:8000/cdn/style.css" /> -->
+<script src="http://localhost:8000/cdn/index.umd.js"></script>
 
 <script>
-  // Configure the widget with the current logged-in student/user session
+  // 1. Point to your local Pydah AI backend
   window.PYDAH_AI_API_URL = "http://localhost:8000";
-  window.PYDAH_AI_AUTH_TOKEN = localStorage.getItem("jwt_token"); // Logged-in user's token
-  window.PYDAH_AI_ASSISTANT_ID = "student-assistant"; // or "portal-assistant"
-  window.PYDAH_AI_TITLE = "Pydah Student Assistant";
+
+  // 2. Pass test auth token (or real student token)
+  window.PYDAH_AI_AUTH_TOKEN = localStorage.getItem("jwt_token") || "test-student-token";
+
+  // 3. Configure Assistant
+  window.PYDAH_AI_ASSISTANT_ID = "portal-assistant";
+  window.PYDAH_AI_TITLE = "Pydah Assistant (Dev)";
   window.PYDAH_AI_MODE = "widget"; // Floating widget in bottom right
 </script>
 ```
 
-### Option 2: React Component Embed
+---
+
+### 🚀 Mode B: Production Mode (Live AWS Lightsail CDN)
+
+In your production web application (Student Portal, Campus Portal, Faculty Dashboard):
+
+```html
+<!-- Production CDN Script & Stylesheet (Hosted on nemo-chat.pydah.edu.in) -->
+<link rel="stylesheet" href="https://nemo-chat.pydah.edu.in/style.css" />
+<script src="https://nemo-chat.pydah.edu.in/index.umd.js"></script>
+
+<script>
+  // 1. Point to your live production Pydah AI API
+  window.PYDAH_AI_API_URL = "https://nemo-ai.pydah.edu.in";
+
+  // 2. Attach authenticated user's JWT token
+  window.PYDAH_AI_AUTH_TOKEN = localStorage.getItem("jwt_token");
+
+  // 3. Configure Assistant Persona & UI
+  window.PYDAH_AI_ASSISTANT_ID = "portal-assistant";
+  window.PYDAH_AI_TITLE = "Pydah Student Assistant";
+  window.PYDAH_AI_MODE = "widget"; // Options: "widget" (floating button) or "embedded" (full-page)
+</script>
+```
+
+---
+
+### ⚛️ Mode C: React Component Integration
+
+If your portal is built with React:
+
 ```jsx
 import { PydahAIChatWidget } from 'pydah-ai-chat-ui';
 import 'pydah-ai-chat-ui/style.css';
 
 function PortalLayout() {
-  const userToken = useAuthToken(); // From your Auth context
+  const userToken = useAuthToken(); // From your auth state / context
+
+  // Toggle API URL based on environment
+  const apiUrl = process.env.NODE_ENV === 'production'
+    ? 'https://nemo-ai.pydah.edu.in'
+    : 'http://localhost:8000';
 
   return (
     <div>
       {/* Your Portal UI */}
+      
       <PydahAIChatWidget
-        apiBaseUrl="http://localhost:8000"
-        assistantId="student-assistant"
+        apiBaseUrl={apiUrl}
+        assistantId="portal-assistant"
         authToken={userToken}
-        title="Pydah Portal Assistant"
+        title="Pydah Assistant"
       />
     </div>
   );
@@ -423,9 +478,18 @@ function PortalLayout() {
 
 ## 8. Summary Checklist for Portal Developers
 
-- [x] Expose `GET /ai-tools` returning your available tools & parameter schemas.
+| Step | Testing Mode (Local) | Production Mode (AWS Lightsail) |
+| :--- | :--- | :--- |
+| **Pydah AI API URL** | `http://localhost:8000` | `https://nemo-ai.pydah.edu.in` |
+| **CDN Script URL** | `http://localhost:8000/cdn/index.umd.js` | `https://nemo-chat.pydah.edu.in/index.umd.js` |
+| **CDN Stylesheet** | `http://localhost:8000/cdn/style.css` | `https://nemo-chat.pydah.edu.in/style.css` |
+| **Host Portal Backend** | `http://localhost:5002` | `https://student.pydah.edu.in` |
+| **User Authentication** | Test JWT or hardcoded mock | Real logged-in student/staff JWT token |
+
+- [x] Expose `GET /ai-tools` returning available tools & parameter schemas.
 - [x] Expose `POST /execute-tool` to execute tools using existing services.
 - [x] Verify incoming Bearer token to protect records by `user_id` and `role`.
-- [x] Add your backend URL to `pydah-ai/.env` under `STUDENT_SERVICE_URL`.
-- [x] You are done! To add a new query in the future, just add it to your `/ai-tools` array—`pydah-ai` will discover and use it automatically!
+- [x] Embed widget with `window.PYDAH_AI_API_URL` set to `https://nemo-ai.pydah.edu.in`.
+- [x] Done! Any new query added to `/ai-tools` will be instantly available in the chat!
+
 
