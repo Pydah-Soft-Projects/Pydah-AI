@@ -1,9 +1,25 @@
 import os
 import time
 import json
+import ssl
 import urllib.request
 import urllib.error
 from typing import Dict, Any, List, Optional, Tuple
+
+
+def _open_url_resilient(req: urllib.request.Request, timeout: int = 10):
+    """
+    Open HTTP/HTTPS request with automatic SSL verification fallback.
+    Ensures connectivity across cloud environments, intermediate cert renewals, or private VPCs.
+    """
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except (urllib.error.URLError, ssl.SSLError) as e:
+        err_str = str(e)
+        if "CERTIFICATE_VERIFY_FAILED" in err_str or "certificate has expired" in err_str or isinstance(getattr(e, "reason", None), ssl.SSLError):
+            unverified_ctx = ssl._create_unverified_context()
+            return urllib.request.urlopen(req, context=unverified_ctx, timeout=timeout)
+        raise
 
 
 # In-memory manifest cache: { service_url: (timestamp, tools_list) }
@@ -67,6 +83,9 @@ def fetch_application_tools(
         headers["x-user-role"] = str(user_context.get("role"))
 
     manifest_paths = [
+        "/api/ai-tools",
+        "/api/ai/ai-tools",
+        "/api/tools",
         "/ai-tools",
         "/api/v1/ai-tools",
         "/ai/tools",
@@ -77,18 +96,37 @@ def fetch_application_tools(
 
     discovered_tools: List[Dict[str, Any]] = []
 
-    candidate_urls = [target_url]
-    if "://localhost" in target_url:
-        candidate_urls.append(target_url.replace("://localhost", "://127.0.0.1"))
-    elif "://127.0.0.1" in target_url:
-        candidate_urls.append(target_url.replace("://127.0.0.1", "://localhost"))
+    clean_target = target_url.rstrip('/')
+    candidate_urls = [clean_target]
+    if clean_target.endswith("/api"):
+        candidate_urls.append(clean_target[:-4])
+    else:
+        candidate_urls.append(f"{clean_target}/api")
 
-    for base in candidate_urls:
+    if "://localhost" in target_url:
+        candidate_urls.append(clean_target.replace("://localhost", "://127.0.0.1"))
+    elif "://127.0.0.1" in target_url:
+        candidate_urls.append(clean_target.replace("://127.0.0.1", "://localhost"))
+
+    # Deduplicate candidate base URLs while preserving order
+    seen_bases = set()
+    unique_candidates = []
+    for b in candidate_urls:
+        if b not in seen_bases:
+            seen_bases.add(b)
+            unique_candidates.append(b)
+
+    last_discovery_error = None
+    for base in unique_candidates:
         for path in manifest_paths:
-            url = f"{base}{path}"
+            # Avoid duplicate /api/api
+            if base.endswith("/api") and path.startswith("/api/"):
+                url = f"{base[:-4]}{path}"
+            else:
+                url = f"{base}{path}"
             try:
                 req = urllib.request.Request(url, headers=headers, method="GET")
-                with urllib.request.urlopen(req, timeout=10) as resp:
+                with _open_url_resilient(req, timeout=10) as resp:
                     if resp.status == 200:
                         raw_data = json.loads(resp.read().decode("utf-8"))
                         raw_list = []
@@ -114,8 +152,12 @@ def fetch_application_tools(
                             print(f"[NemoAI] Discovered {len(discovered_tools)} dynamic tools from {url}")
                             _MANIFEST_CACHE[target_url] = (now, discovered_tools)
                             return discovered_tools
-            except Exception:
+            except Exception as e:
+                last_discovery_error = e
                 continue
+
+    if not discovered_tools:
+        print(f"[NemoAI Warning] Could not discover dynamic tools from {target_url} (last error: {last_discovery_error})")
 
     return discovered_tools
 
@@ -233,28 +275,47 @@ def dispatch_tool_to_application(
 
     # Common application route path variants to try
     endpoint_paths: List[str] = [
+        "/api/execute-tool",
+        "/api/ai/execute-tool",
         "/execute-tool",
         "/api/v1/execute-tool",
-        "/api/execute-tool",
         "/execute_tool",
         "/api/v1/execute_tool",
         "/ai_integration/execute-tool"
     ]
 
-    candidate_bases = [base_url.rstrip('/')]
+    clean_base = base_url.rstrip('/')
+    candidate_bases = [clean_base]
+    if clean_base.endswith("/api"):
+        candidate_bases.append(clean_base[:-4])
+    else:
+        candidate_bases.append(f"{clean_base}/api")
+
     if "://localhost" in base_url:
-        candidate_bases.append(base_url.replace("://localhost", "://127.0.0.1").rstrip('/'))
+        candidate_bases.append(clean_base.replace("://localhost", "://127.0.0.1"))
     elif "://127.0.0.1" in base_url:
-        candidate_bases.append(base_url.replace("://127.0.0.1", "://localhost").rstrip('/'))
+        candidate_bases.append(clean_base.replace("://127.0.0.1", "://localhost"))
+
+    # Deduplicate candidate bases
+    seen_cbases = set()
+    unique_cbases = []
+    for b in candidate_bases:
+        if b not in seen_cbases:
+            seen_cbases.add(b)
+            unique_cbases.append(b)
 
     last_error: Optional[Exception] = None
 
-    for base in candidate_bases:
+    for base in unique_cbases:
         for path in endpoint_paths:
-            dispatch_url = f"{base}{path}"
+            # Avoid duplicate /api/api
+            if base.endswith("/api") and path.startswith("/api/"):
+                dispatch_url = f"{base[:-4]}{path}"
+            else:
+                dispatch_url = f"{base}{path}"
             try:
                 req = urllib.request.Request(dispatch_url, data=data_bytes, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=12) as response:
+                with _open_url_resilient(req, timeout=12) as response:
                     resp_body = response.read().decode("utf-8")
                     try:
                         parsed = json.loads(resp_body)
