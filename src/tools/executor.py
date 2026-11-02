@@ -1,6 +1,6 @@
 import inspect
 from typing import Dict, Any, Callable, List, Optional
-from src.tools.generic_connector import dispatch_tool_to_application, TOOL_SERVICE_MAPPING
+from src.tools.generic_connector import dispatch_tool_to_application
 from src.tools.handlers.student_tools import (
     get_my_student_profile,
     get_my_attendance_summary,
@@ -71,7 +71,8 @@ def execute_tool(
         )
 
     # 1. Dispatch tool execution to target application runner
-    result = dispatch_tool_to_application(tool_name, arguments, user_context)
+    target_url = user_context.get("service_url") if isinstance(user_context, dict) else None
+    result = dispatch_tool_to_application(tool_name, arguments, user_context, target_service_url=target_url)
     
     # If the service URL is not configured or in dev mock mode, check for local dev fallback handler
     if isinstance(result, dict) and result.get("status") == "dev_mock":

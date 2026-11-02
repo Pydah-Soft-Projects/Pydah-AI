@@ -38,16 +38,21 @@ With our **Self-Describing Manifest architecture**, application developers **nev
 
 ---
 
+> ⚡ **Dynamic Backend Resolution (Zero Server `.env` Edits):**  
+> Each client application provides its own backend URL directly via `serviceUrl` prop (`<NemoAIChatWidget serviceUrl="https://api.portal.com" />`), `window.NEMO_AI_SERVICE_URL`, or `X-Service-URL` header. `nemo-ai` routes tool discovery (`/ai-tools`) and execution (`/execute-tool`) dynamically to that host backend without requiring server `.env` edits.
+
+---
+
 ## 📋 Checklist for Application Developers: What Your Application Backend Must Handle
 
-When connecting your application backend (Student Portal, Fee, Transport, HRMS) to `pydah-ai`, make sure your backend handles the following 6 requirements:
+When connecting your application backend (Student Portal, Fee, Transport, HRMS) to `nemo-ai`, make sure your backend handles the following 6 requirements:
 
 ### 1. Expose the `/execute-tool` Route
 - Register a `POST` route at `/execute-tool` (or `/api/v1/execute-tool` or `/ai_integration/execute-tool`).
-- `pydah-ai` sends a `POST` request to this endpoint whenever the LLM requests data from your application.
+- `nemo-ai` sends a `POST` request to this endpoint whenever the LLM requests data from your application.
 
 ### 2. Handle Flexible Authentication Extraction
-- Extract the user's Bearer token flexibly. `pydah-ai` sends the token in:
+- Extract the user's Bearer token flexibly. `nemo-ai` sends the token in:
   - Header: `Authorization: Bearer <token>`
   - Header: `x-access-token` / `x-user-token`
   - Body: `req.body.token` or `req.body.user_context.delegated_access_token`
@@ -112,7 +117,7 @@ your-application/backend/
 └── ai_integration/              <-- ADD THIS FOLDER IN YOUR APPLICATION BACKEND
     ├── tools.py / tools.js      # Wraps existing application services to retrieve data
     ├── permissions.py / perm.js # Verifies user context and record permissions
-    └── routes.py / routes.js    # Exposes /execute-tool endpoint for pydah-ai
+    └── routes.py / routes.js    # Exposes /execute-tool endpoint for nemo-ai
 ```
 
 ---
@@ -177,7 +182,7 @@ async def execute_tool(payload: dict, current_user=Depends(get_authenticated_use
 
 ## 4. Environment Variables Configuration
 
-In `pydah-ai/.env`, configure the base service URLs for your application backends:
+In `nemo-ai/.env`, configure the base service URLs for your application backends:
 
 ```env
 # Server Configuration

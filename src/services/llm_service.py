@@ -57,7 +57,10 @@ def run_assistant_chat(
     final_messages = [system_msg] + conversation
 
     # 3. Discover Dynamic Tools from connected host application (Student / Campus Portal)
-    dynamic_tools = fetch_application_tools(user_context=user_context)
+    dynamic_tools = fetch_application_tools(
+        service_url=user_context.get("service_url"),
+        user_context=user_context
+    )
     dynamic_tool_names = [
         t.get("function", {}).get("name") or t.get("name")
         for t in dynamic_tools

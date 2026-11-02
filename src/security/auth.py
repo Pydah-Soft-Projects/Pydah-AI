@@ -48,6 +48,7 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
     token: Optional[str] = None
     user_id: Optional[str] = None
     role: Optional[str] = None
+    service_url: Optional[str] = None
     headers_dict: Dict[str, str] = {}
 
     if request is not None:
@@ -62,27 +63,42 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
             request.headers.get("x-employee-id")
         )
         role = request.headers.get("x-user-role") or request.headers.get("x-role")
+        service_url = (
+            request.headers.get("x-service-url") or
+            request.headers.get("x-backend-url") or
+            request.headers.get("x-portal-url") or
+            request.headers.get("x-application-url")
+        )
         
         # Copy safe headers for potential service-to-service forwarding
         for k, v in request.headers.items():
             if k.lower().startswith("x-"):
                 headers_dict[k.lower()] = v
 
-    # Payload token fallback if not provided via HTTP header
-    if not token and payload and payload.user_token:
-        token = payload.user_token
+    # Payload token & service_url fallback if not provided via HTTP header
+    if payload:
+        if not token and payload.user_token:
+            token = payload.user_token
+        if not service_url and payload.service_url:
+            service_url = payload.service_url
 
-    # If user_id or role wasn't explicitly supplied in headers, inspect JWT payload claims
-    if token and (not user_id or not role):
+    # If user_id, role, or service_url wasn't explicitly supplied, inspect JWT payload claims
+    if token and (not user_id or not role or not service_url):
         claims = safe_decode_jwt_claims(token)
         if not user_id:
             user_id = claims.get("user_id") or claims.get("student_id") or claims.get("sub") or claims.get("id")
         if not role:
             role = claims.get("role") or claims.get("user_role") or claims.get("type")
+        if not service_url:
+            service_url = claims.get("service_url") or claims.get("backend_url") or claims.get("iss")
+
+    if service_url:
+        service_url = service_url.strip().rstrip('/')
 
     return {
         "delegated_access_token": token,
         "user_id": user_id,
         "role": role or "user",
+        "service_url": service_url,
         "headers": headers_dict
     }

@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     history: Optional[List[Message]] = Field(default_factory=list, description="Prior conversation message history")
     system_prompt: Optional[str] = Field(default=None, description="Optional custom system behavior override")
     user_token: Optional[str] = Field(default=None, description="Delegated access token for application data retrieval")
+    service_url: Optional[str] = Field(default=None, description="Dynamic host portal backend base URL for tool dispatch")
 
 
 class ChatResponse(BaseModel):

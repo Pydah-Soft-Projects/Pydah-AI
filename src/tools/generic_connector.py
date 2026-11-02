@@ -11,68 +11,12 @@ _MANIFEST_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 CACHE_TTL_SECONDS = 60.0  # Refresh tools from portal every 60 seconds
 
 
-# Comprehensive Tool Service Mapping including function name aliases
-TOOL_SERVICE_MAPPING: Dict[str, str] = {
-    # Student Profile Aliases -> STUDENT_SERVICE_URL
-    "get_my_student_profile": "STUDENT_SERVICE_URL",
-    "get_student_profile": "STUDENT_SERVICE_URL",
-    "get_my_profile": "STUDENT_SERVICE_URL",
-    "get_profile": "STUDENT_SERVICE_URL",
-    "fetch_student_profile": "STUDENT_SERVICE_URL",
-    "student_profile": "STUDENT_SERVICE_URL",
-    "get_user_profile": "STUDENT_SERVICE_URL",
-    "get_student_details": "STUDENT_SERVICE_URL",
-    "get_my_details": "STUDENT_SERVICE_URL",
-
-    # Attendance Aliases -> STUDENT_SERVICE_URL
-    "get_my_attendance_summary": "STUDENT_SERVICE_URL",
-    "get_student_attendance": "STUDENT_SERVICE_URL",
-    "get_my_attendance": "STUDENT_SERVICE_URL",
-    "get_attendance": "STUDENT_SERVICE_URL",
-    "fetch_attendance": "STUDENT_SERVICE_URL",
-    "student_attendance": "STUDENT_SERVICE_URL",
-    "get_attendance_summary": "STUDENT_SERVICE_URL",
-
-    # Academic Marks Aliases -> STUDENT_SERVICE_URL
-    "get_my_academic_marks": "STUDENT_SERVICE_URL",
-    "get_student_marks": "STUDENT_SERVICE_URL",
-    "get_my_marks": "STUDENT_SERVICE_URL",
-    "get_marks": "STUDENT_SERVICE_URL",
-    "get_internal_marks": "STUDENT_SERVICE_URL",
-    "get_grades": "STUDENT_SERVICE_URL",
-    "get_academic_performance": "STUDENT_SERVICE_URL",
-    "student_marks": "STUDENT_SERVICE_URL",
-
-    # Timetable / Class Schedule Aliases -> STUDENT_SERVICE_URL
-    "get_my_timetable": "STUDENT_SERVICE_URL",
-    "get_my_time_table": "STUDENT_SERVICE_URL",
-    "get_student_timetable": "STUDENT_SERVICE_URL",
-    "get_timetable": "STUDENT_SERVICE_URL",
-    "get_time_table": "STUDENT_SERVICE_URL",
-    "fetch_timetable": "STUDENT_SERVICE_URL",
-    "student_timetable": "STUDENT_SERVICE_URL",
-    "get_class_schedule": "STUDENT_SERVICE_URL",
-    "get_schedule": "STUDENT_SERVICE_URL",
-
-    # Fee & Dues Aliases -> FEE_SERVICE_URL
-    "get_my_fee_summary": "FEE_SERVICE_URL",
-    "get_my_pending_dues": "FEE_SERVICE_URL",
-    "get_student_fees": "FEE_SERVICE_URL",
-    "get_my_fees": "FEE_SERVICE_URL",
-    "get_pending_dues": "FEE_SERVICE_URL",
-    "get_fee_details": "FEE_SERVICE_URL",
-    "get_fees": "FEE_SERVICE_URL",
-    "fetch_pending_dues": "FEE_SERVICE_URL",
-    "student_fees": "FEE_SERVICE_URL",
-
-    # Transport Aliases -> TRANSPORT_SERVICE_URL
-    "get_my_bus_details": "TRANSPORT_SERVICE_URL",
-    "get_my_route": "TRANSPORT_SERVICE_URL",
-    "get_student_transport": "TRANSPORT_SERVICE_URL",
-    "get_my_transport": "TRANSPORT_SERVICE_URL",
-    "get_transport": "TRANSPORT_SERVICE_URL",
-    "student_transport": "TRANSPORT_SERVICE_URL",
-}
+# Optional explicit tool-to-service environment variable overrides
+# By default, dispatch_tool_to_application automatically routes tools dynamically based on keywords:
+# - 'fee', 'due', 'payment', 'receipt' -> FEE_SERVICE_URL
+# - 'bus', 'transport', 'route', 'driver' -> TRANSPORT_SERVICE_URL
+# - default -> STUDENT_SERVICE_URL or APPLICATION_SERVICE_URL
+TOOL_SERVICE_MAPPING: Dict[str, str] = {}
 
 
 def fetch_application_tools(
@@ -92,7 +36,12 @@ def fetch_application_tools(
     Returns normalized tool definitions to feed directly into the LLM.
     Caches results in memory for CACHE_TTL_SECONDS to avoid latency on every turn.
     """
-    target_url = service_url or os.getenv("STUDENT_SERVICE_URL") or os.getenv("APPLICATION_SERVICE_URL")
+    target_url = (
+        service_url or
+        (user_context.get("service_url") if user_context else None) or
+        os.getenv("STUDENT_SERVICE_URL") or
+        os.getenv("APPLICATION_SERVICE_URL")
+    )
     if not target_url:
         return []
 
@@ -212,7 +161,11 @@ def dispatch_tool_to_application(
     clean_tool_name = tool_name.strip().lower()
     env_var_name = TOOL_SERVICE_MAPPING.get(clean_tool_name) or TOOL_SERVICE_MAPPING.get(tool_name)
 
-    base_url = target_service_url
+    base_url = (
+        target_service_url or
+        (user_context.get("service_url") if isinstance(user_context, dict) else None) or
+        (user_context.get("headers", {}).get("x-service-url") if isinstance(user_context, dict) else None)
+    )
 
     if not base_url:
         if env_var_name:
@@ -229,10 +182,10 @@ def dispatch_tool_to_application(
     if not base_url:
         return {
             "status": "dev_mock",
-            "message": f"Service URL for tool '{tool_name}' is not configured in .env",
+            "message": f"Service URL for tool '{tool_name}' was not provided in request (service_url / X-Service-URL) or .env",
             "dispatched_tool": tool_name,
             "arguments": arguments,
-            "user_id": user_context.get("user_id") or "STU-2025-0842"
+            "user_id": user_context.get("user_id") if isinstance(user_context, dict) else "STU-2025-0842"
         }
 
     token = user_context.get("delegated_access_token")
