@@ -77,37 +77,45 @@ def fetch_application_tools(
 
     discovered_tools: List[Dict[str, Any]] = []
 
-    for path in manifest_paths:
-        url = f"{target_url}{path}"
-        try:
-            req = urllib.request.Request(url, headers=headers, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                if resp.status == 200:
-                    raw_data = json.loads(resp.read().decode("utf-8"))
-                    raw_list = []
-                    if isinstance(raw_data, list):
-                        raw_list = raw_data
-                    elif isinstance(raw_data, dict):
-                        raw_list = (
-                            raw_data.get("tools") or 
-                            raw_data.get("functions") or 
-                            raw_data.get("manifest") or 
-                            raw_data.get("data") or 
-                            []
-                        )
+    candidate_urls = [target_url]
+    if "://localhost" in target_url:
+        candidate_urls.append(target_url.replace("://localhost", "://127.0.0.1"))
+    elif "://127.0.0.1" in target_url:
+        candidate_urls.append(target_url.replace("://127.0.0.1", "://localhost"))
 
-                    # Normalize into standard OpenAI tool function schema
-                    for item in raw_list:
-                        normalized = _normalize_manifest_tool(item)
-                        if normalized:
-                            discovered_tools.append(normalized)
+    for base in candidate_urls:
+        for path in manifest_paths:
+            url = f"{base}{path}"
+            try:
+                req = urllib.request.Request(url, headers=headers, method="GET")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status == 200:
+                        raw_data = json.loads(resp.read().decode("utf-8"))
+                        raw_list = []
+                        if isinstance(raw_data, list):
+                            raw_list = raw_data
+                        elif isinstance(raw_data, dict):
+                            raw_list = (
+                                raw_data.get("tools") or 
+                                raw_data.get("functions") or 
+                                raw_data.get("manifest") or 
+                                raw_data.get("data") or 
+                                []
+                            )
 
-                    if discovered_tools:
-                        # Successfully discovered tools; store in cache
-                        _MANIFEST_CACHE[target_url] = (now, discovered_tools)
-                        return discovered_tools
-        except Exception:
-            continue
+                        # Normalize into standard OpenAI tool function schema
+                        for item in raw_list:
+                            normalized = _normalize_manifest_tool(item)
+                            if normalized:
+                                discovered_tools.append(normalized)
+
+                        if discovered_tools:
+                            # Successfully discovered tools; store in cache
+                            print(f"[NemoAI] Discovered {len(discovered_tools)} dynamic tools from {url}")
+                            _MANIFEST_CACHE[target_url] = (now, discovered_tools)
+                            return discovered_tools
+            except Exception:
+                continue
 
     return discovered_tools
 
@@ -158,8 +166,9 @@ def dispatch_tool_to_application(
     - Retries across common route path variants (/execute-tool, /api/v1/execute-tool, /api/execute-tool, /ai_integration/execute-tool) if 404 is encountered.
     - Forwards auth token across multiple headers (Authorization, x-access-token, x-user-token) and payload body.
     """
-    clean_tool_name = tool_name.strip().lower()
-    env_var_name = TOOL_SERVICE_MAPPING.get(clean_tool_name) or TOOL_SERVICE_MAPPING.get(tool_name)
+    normalized_tool_name = tool_name.split(":")[-1].strip()
+    clean_tool_name = normalized_tool_name.lower()
+    env_var_name = TOOL_SERVICE_MAPPING.get(clean_tool_name) or TOOL_SERVICE_MAPPING.get(normalized_tool_name)
 
     base_url = (
         target_service_url or
@@ -213,8 +222,8 @@ def dispatch_tool_to_application(
             headers[k] = str(v)
 
     payload = {
-        "tool_name": tool_name,
-        "function_name": tool_name,
+        "tool_name": normalized_tool_name,
+        "function_name": normalized_tool_name,
         "arguments": arguments,
         "token": token,
         "user_context": user_context
@@ -232,36 +241,46 @@ def dispatch_tool_to_application(
         "/ai_integration/execute-tool"
     ]
 
+    candidate_bases = [base_url.rstrip('/')]
+    if "://localhost" in base_url:
+        candidate_bases.append(base_url.replace("://localhost", "://127.0.0.1").rstrip('/'))
+    elif "://127.0.0.1" in base_url:
+        candidate_bases.append(base_url.replace("://127.0.0.1", "://localhost").rstrip('/'))
+
     last_error: Optional[Exception] = None
 
-    for path in endpoint_paths:
-        dispatch_url = f"{base_url.rstrip('/')}{path}"
-        try:
-            req = urllib.request.Request(dispatch_url, data=data_bytes, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=12) as response:
-                resp_body = response.read().decode("utf-8")
-                try:
-                    return json.loads(resp_body)
-                except json.JSONDecodeError:
-                    return {"result": resp_body}
-        except urllib.error.HTTPError as e:
-            last_error = e
-            # If 404, try the next path variant in the loop
-            if e.code == 404:
-                continue
-            
-            error_body = ""
+    for base in candidate_bases:
+        for path in endpoint_paths:
+            dispatch_url = f"{base}{path}"
             try:
-                error_body = e.read().decode("utf-8")
-            except Exception:
-                pass
-            return {
-                "error": f"Application tool runner returned HTTP {e.code}",
-                "details": error_body or str(e)
-            }
-        except Exception as e:
-            last_error = e
-            break
+                req = urllib.request.Request(dispatch_url, data=data_bytes, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=12) as response:
+                    resp_body = response.read().decode("utf-8")
+                    try:
+                        parsed = json.loads(resp_body)
+                        print(f"[NemoAI] Tool '{tool_name}' dispatched successfully to {dispatch_url}")
+                        return parsed
+                    except json.JSONDecodeError:
+                        return {"result": resp_body}
+            except urllib.error.HTTPError as e:
+                last_error = e
+                # If 404, try the next path variant in the loop
+                if e.code == 404:
+                    continue
+                
+                error_body = ""
+                try:
+                    error_body = e.read().decode("utf-8")
+                except Exception:
+                    pass
+                print(f"[NemoAI] Tool '{tool_name}' returned HTTP {e.code} from {dispatch_url}: {error_body}")
+                return {
+                    "error": f"Application tool runner returned HTTP {e.code}",
+                    "details": error_body or str(e)
+                }
+            except Exception as e:
+                last_error = e
+                continue
 
     return {
         "error": f"Failed to dispatch tool '{tool_name}' to application at {base_url}",

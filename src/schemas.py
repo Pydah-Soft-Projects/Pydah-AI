@@ -20,6 +20,11 @@ class ChatRequest(BaseModel):
     system_prompt: Optional[str] = Field(default=None, description="Optional custom system behavior override")
     user_token: Optional[str] = Field(default=None, description="Delegated access token for application data retrieval")
     service_url: Optional[str] = Field(default=None, description="Dynamic host portal backend base URL for tool dispatch")
+    serviceUrl: Optional[str] = Field(default=None, description="CamelCase alias for service_url")
+    backend_url: Optional[str] = Field(default=None, description="Alias for service_url")
+    backendUrl: Optional[str] = Field(default=None, description="Alias for service_url")
+    portal_url: Optional[str] = Field(default=None, description="Alias for service_url")
+    portalUrl: Optional[str] = Field(default=None, description="Alias for service_url")
 
 
 class ChatResponse(BaseModel):

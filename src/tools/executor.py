@@ -18,6 +18,7 @@ class ToolExecutionError(Exception):
 
 FALLBACK_HANDLERS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]] = {
     # Clean non-student-centric tool names
+    "get_user_profile": get_my_student_profile,
     "get_student_profile": get_my_student_profile,
     "get_profile": get_my_student_profile,
     "get_attendance_summary": get_my_attendance_summary,

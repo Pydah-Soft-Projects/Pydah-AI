@@ -82,12 +82,17 @@ def chat_completion(chat_req: ChatRequest, request: Request):
         client = LLMClient(config)
         user_context = get_user_context(request=request, payload=chat_req)
 
+        svc_url = user_context.get("service_url") or "None (no service_url provided)"
+        print(f"[NemoAI] Incoming query: '{chat_req.message[:60]}' | Service URL: {svc_url}")
+
         answer, executed_tools, assistant_id = run_assistant_chat(
             payload=chat_req,
             user_context=user_context,
             config=config,
             client=client
         )
+
+        print(f"[NemoAI] Finished query | Tools executed: {executed_tools}")
 
         return ChatResponse(
             success=True,

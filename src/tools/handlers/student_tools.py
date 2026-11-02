@@ -9,7 +9,7 @@ def get_my_student_profile(arguments: Dict[str, Any], user_context: Dict[str, An
     """
     Fetch student profile details for the authenticated user.
     """
-    student_service_url = os.getenv("STUDENT_SERVICE_URL", "").strip()
+    student_service_url = (user_context.get("service_url") or os.getenv("STUDENT_SERVICE_URL", "")).strip()
     token = user_context.get("delegated_access_token")
 
     if student_service_url:
@@ -48,7 +48,7 @@ def get_my_attendance_summary(arguments: Dict[str, Any], user_context: Dict[str,
     """
     Fetch attendance record breakdown for the authenticated student.
     """
-    student_service_url = os.getenv("STUDENT_SERVICE_URL", "").strip()
+    student_service_url = (user_context.get("service_url") or os.getenv("STUDENT_SERVICE_URL", "")).strip()
     token = user_context.get("delegated_access_token")
 
     if student_service_url:
@@ -87,7 +87,7 @@ def get_my_academic_marks(arguments: Dict[str, Any], user_context: Dict[str, Any
     """
     Fetch academic grades, CGPA, and semester marks.
     """
-    student_service_url = os.getenv("STUDENT_SERVICE_URL", "").strip()
+    student_service_url = (user_context.get("service_url") or os.getenv("STUDENT_SERVICE_URL", "")).strip()
     token = user_context.get("delegated_access_token")
 
     if student_service_url:
@@ -125,7 +125,7 @@ def get_my_timetable(arguments: Dict[str, Any], user_context: Dict[str, Any]) ->
     """
     Fetch the authenticated student's weekly schedule / timetable.
     """
-    student_service_url = os.getenv("STUDENT_SERVICE_URL", "").strip()
+    student_service_url = (user_context.get("service_url") or os.getenv("STUDENT_SERVICE_URL", "")).strip()
     token = user_context.get("delegated_access_token")
 
     if student_service_url:

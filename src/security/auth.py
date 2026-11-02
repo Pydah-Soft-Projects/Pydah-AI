@@ -67,7 +67,10 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
             request.headers.get("x-service-url") or
             request.headers.get("x-backend-url") or
             request.headers.get("x-portal-url") or
-            request.headers.get("x-application-url")
+            request.headers.get("x-application-url") or
+            request.headers.get("service-url") or
+            request.headers.get("service_url") or
+            request.headers.get("backend-url")
         )
         
         # Copy safe headers for potential service-to-service forwarding
@@ -79,8 +82,23 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
     if payload:
         if not token and payload.user_token:
             token = payload.user_token
-        if not service_url and payload.service_url:
-            service_url = payload.service_url
+        if not service_url:
+            service_url = (
+                getattr(payload, "service_url", None) or
+                getattr(payload, "serviceUrl", None) or
+                getattr(payload, "backend_url", None) or
+                getattr(payload, "backendUrl", None) or
+                getattr(payload, "portal_url", None) or
+                getattr(payload, "portalUrl", None)
+            )
+
+    # Automatic origin/referer inference if client omitted service_url
+    if not service_url and request is not None:
+        origin = request.headers.get("origin") or request.headers.get("referer") or ""
+        if "localhost:3000" in origin or "127.0.0.1:3000" in origin:
+            service_url = "http://localhost:4000"
+        elif "acad.pydah.edu.in" in origin:
+            service_url = "https://acad.pydah.edu.in"
 
     # If user_id, role, or service_url wasn't explicitly supplied, inspect JWT payload claims
     if token and (not user_id or not role or not service_url):
