@@ -1,8 +1,8 @@
-# Pydah AI - Portal Developer Integration Guide (Self-Describing Tool Architecture)
+# Nemo AI - Portal Developer Integration Guide (Self-Describing Tool Architecture)
 
-Welcome! This guide explains how application backend developers (Student Portal, Campus Portal, Faculty Portal, Admin System) can integrate with **Pydah AI (`pydah-ai`)**.
+Welcome! This guide explains how application backend developers (Student Portal, Campus Portal, Faculty Portal, Admin System) can integrate with **Nemo AI (`nemo-ai`)**.
 
-With our **Self-Describing Manifest Architecture**, you **never** need to touch or modify `pydah-ai` code to add new AI capabilities. **Your portal backend is the single source of truth** for all functions, database queries, and role permissions.
+With our **Self-Describing Manifest Architecture**, you **never** need to touch or modify `nemo-ai` code to add new AI capabilities. **Your portal backend is the single source of truth** for all functions, database queries, and role permissions.
 
 ---
 
@@ -17,7 +17,7 @@ With our **Self-Describing Manifest Architecture**, you **never** need to touch 
                             │ User Prompt + Bearer Token
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│ Pydah AI Engine (Central Orchestrator)                 │
+│ Nemo AI Engine (Central Orchestrator)                  │
 │  1. Discovers tools: GET {PORTAL_URL}/ai-tools          │
 │  2. Asks LLM (Gemini) which tool to use                │
 │  3. Dispatches execution: POST {PORTAL_URL}/execute-tool│
@@ -403,16 +403,16 @@ If you are developing or testing on your local machine:
 <script src="http://localhost:8000/cdn/index.umd.js"></script>
 
 <script>
-  // 1. Point to your local Pydah AI backend
-  window.PYDAH_AI_API_URL = "http://localhost:8000";
+  // 1. Point to your local Nemo AI backend
+  window.NEMO_AI_API_URL = "http://localhost:8000";
 
   // 2. Pass test auth token (or real student token)
-  window.PYDAH_AI_AUTH_TOKEN = localStorage.getItem("jwt_token") || "test-student-token";
+  window.NEMO_AI_AUTH_TOKEN = localStorage.getItem("jwt_token") || "test-student-token";
 
   // 3. Configure Assistant
-  window.PYDAH_AI_ASSISTANT_ID = "portal-assistant";
-  window.PYDAH_AI_TITLE = "Pydah Assistant (Dev)";
-  window.PYDAH_AI_MODE = "widget"; // Floating widget in bottom right
+  window.NEMO_AI_ASSISTANT_ID = "portal-assistant";
+  window.NEMO_AI_TITLE = "Nemo (Dev)";
+  window.NEMO_AI_MODE = "widget"; // Floating widget in bottom right
 </script>
 ```
 
@@ -428,16 +428,16 @@ In your production web application (Student Portal, Campus Portal, Faculty Dashb
 <script src="https://nemo-chat.pydah.edu.in/index.umd.js"></script>
 
 <script>
-  // 1. Point to your live production Pydah AI API
-  window.PYDAH_AI_API_URL = "https://nemo-ai.pydah.edu.in";
+  // 1. Point to your live production Nemo AI API
+  window.NEMO_AI_API_URL = "https://nemo-ai.pydah.edu.in";
 
   // 2. Attach authenticated user's JWT token
-  window.PYDAH_AI_AUTH_TOKEN = localStorage.getItem("jwt_token");
+  window.NEMO_AI_AUTH_TOKEN = localStorage.getItem("jwt_token");
 
   // 3. Configure Assistant Persona & UI
-  window.PYDAH_AI_ASSISTANT_ID = "portal-assistant";
-  window.PYDAH_AI_TITLE = "Pydah Student Assistant";
-  window.PYDAH_AI_MODE = "widget"; // Options: "widget" (floating button) or "embedded" (full-page)
+  window.NEMO_AI_ASSISTANT_ID = "portal-assistant";
+  window.NEMO_AI_TITLE = "Nemo";
+  window.NEMO_AI_MODE = "widget"; // Options: "widget" (floating button) or "embedded" (full-page)
 </script>
 ```
 
@@ -448,7 +448,7 @@ In your production web application (Student Portal, Campus Portal, Faculty Dashb
 If your portal is built with React:
 
 ```jsx
-import { PydahAIChatWidget } from 'pydah-ai-chat-ui';
+import { NemoAIChatWidget } from 'pydah-ai-chat-ui';
 import 'pydah-ai-chat-ui/style.css';
 
 function PortalLayout() {
@@ -463,11 +463,11 @@ function PortalLayout() {
     <div>
       {/* Your Portal UI */}
       
-      <PydahAIChatWidget
+      <NemoAIChatWidget
         apiBaseUrl={apiUrl}
         assistantId="portal-assistant"
         authToken={userToken}
-        title="Pydah Assistant"
+        title="Nemo"
       />
     </div>
   );
@@ -480,7 +480,7 @@ function PortalLayout() {
 
 | Step | Testing Mode (Local) | Production Mode (AWS Lightsail) |
 | :--- | :--- | :--- |
-| **Pydah AI API URL** | `http://localhost:8000` | `https://nemo-ai.pydah.edu.in` |
+| **Nemo AI API URL** | `http://localhost:8000` | `https://nemo-ai.pydah.edu.in` |
 | **CDN Script URL** | `http://localhost:8000/cdn/index.umd.js` | `https://nemo-chat.pydah.edu.in/index.umd.js` |
 | **CDN Stylesheet** | `http://localhost:8000/cdn/style.css` | `https://nemo-chat.pydah.edu.in/style.css` |
 | **Host Portal Backend** | `http://localhost:5002` | `https://student.pydah.edu.in` |
@@ -489,7 +489,7 @@ function PortalLayout() {
 - [x] Expose `GET /ai-tools` returning available tools & parameter schemas.
 - [x] Expose `POST /execute-tool` to execute tools using existing services.
 - [x] Verify incoming Bearer token to protect records by `user_id` and `role`.
-- [x] Embed widget with `window.PYDAH_AI_API_URL` set to `https://nemo-ai.pydah.edu.in`.
+- [x] Embed widget with `window.NEMO_AI_API_URL` set to `https://nemo-ai.pydah.edu.in`.
 - [x] Done! Any new query added to `/ai-tools` will be instantly available in the chat!
 
 

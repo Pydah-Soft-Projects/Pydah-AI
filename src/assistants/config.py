@@ -13,12 +13,12 @@ class AssistantConfig:
 
 
 DEFAULT_GENERAL_SYSTEM_PROMPT = (
-    "You are Pydah AI, a helpful, respectful, and intelligent AI assistant. "
+    "You are Nemo, a helpful, respectful, and intelligent AI assistant. "
     "Provide clear, accurate, and concise answers to user queries."
 )
 
 DEFAULT_FEE_SYSTEM_PROMPT = (
-    "You are the Pydah Fee Management Assistant. Your task is to assist students, "
+    "You are Nemo, the Fee Management Assistant. Your task is to assist students, "
     "parents, and administration with fee summaries, pending dues, receipt details, "
     "and payment deadlines. "
     "CRITICAL MANDATE: Whenever the user asks about fees, pending dues, or payment details, "
@@ -27,14 +27,14 @@ DEFAULT_FEE_SYSTEM_PROMPT = (
 )
 
 DEFAULT_TRANSPORT_SYSTEM_PROMPT = (
-    "You are the Pydah Transport Assistant. Help students and staff check bus routes, "
+    "You are Nemo, the Transport Assistant. Help students and staff check bus routes, "
     "pick-up/drop-off schedules, driver contact details, and vehicle status. "
     "CRITICAL MANDATE: Whenever the user asks about bus routes, pickup points, timings, or driver details, "
     "NEVER reply conversationally without data. You MUST call the appropriate transport tool immediately."
 )
 
 DEFAULT_STUDENT_SYSTEM_PROMPT = (
-    "You are the Pydah Portal Assistant. You assist authenticated users including students, "
+    "You are Nemo, the Portal Assistant. You assist authenticated users including students, "
     "faculty, and administrative staff. You have access to real-time tools provided by the portal backend. "
     "CRITICAL MANDATE: Whenever answering queries regarding user profiles, attendance, grades, "
     "class timetables, daily schedules, fees, student clubs, club members, club activities, faculty details, or institutional records, NEVER guess or reply conversationally without data. "
@@ -54,42 +54,42 @@ TRANSPORT_ALLOWED_TOOLS = PORTAL_ALLOWED_TOOLS
 ASSISTANTS_CONFIG: Dict[str, AssistantConfig] = {
     "general-assistant": AssistantConfig(
         id="general-assistant",
-        name="Pydah AI Assistant",
+        name="Nemo Assistant",
         description="General institutional and portal assistant with tool execution access.",
         system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
         allowed_tools=["*"]
     ),
     "student-assistant": AssistantConfig(
         id="student-assistant",
-        name="Pydah Portal & Student Assistant",
+        name="Nemo Portal & Student Assistant",
         description="Handles portal queries for students, faculty, and staff with real-time tool execution.",
         system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
         allowed_tools=STUDENT_ALLOWED_TOOLS
     ),
     "admin-assistant": AssistantConfig(
         id="admin-assistant",
-        name="Pydah Admin Assistant",
+        name="Nemo Admin Assistant",
         description="Handles administration queries, portal overview statistics, student records, and institutional data with real-time tool execution.",
         system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
         allowed_tools=STUDENT_ALLOWED_TOOLS
     ),
     "portal-assistant": AssistantConfig(
         id="portal-assistant",
-        name="Pydah Portal & Student Assistant",
+        name="Nemo Portal & Student Assistant",
         description="Handles portal queries for students, faculty, and staff with real-time tool execution.",
         system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
         allowed_tools=STUDENT_ALLOWED_TOOLS
     ),
     "fee-assistant": AssistantConfig(
         id="fee-assistant",
-        name="Fee Management Assistant",
+        name="Nemo Fee Management Assistant",
         description="Handles student fee queries, pending dues, and payment statements.",
         system_prompt=DEFAULT_FEE_SYSTEM_PROMPT,
         allowed_tools=FEE_ALLOWED_TOOLS
     ),
     "transport-assistant": AssistantConfig(
         id="transport-assistant",
-        name="Transport Assistant",
+        name="Nemo Transport Assistant",
         description="Handles bus routes, pickup points, timings, and transport queries.",
         system_prompt=DEFAULT_TRANSPORT_SYSTEM_PROMPT,
         allowed_tools=TRANSPORT_ALLOWED_TOOLS

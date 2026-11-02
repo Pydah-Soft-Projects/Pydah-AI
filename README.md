@@ -1,6 +1,6 @@
-# Pydah AI - Central GenAI Engine & Application Integration Guide
+# Nemo AI - Central GenAI Engine & Application Integration Guide
 
-This repository contains the central **Pydah AI Engine (`pydah-ai`)**, providing unified GenAI orchestration, multi-assistant personas, tool selection, and secure tool execution across PydahSoft applications (Student Portal, Campus Portal, Fee Management, Transport, etc.).
+This repository contains the central **Nemo AI Engine (`nemo-ai`)**, providing unified GenAI orchestration, multi-assistant personas, tool selection, and secure tool execution across institutional applications (Student Portal, Campus Portal, Fee Management, Transport, etc.).
 
 > 📘 **Looking to integrate an application backend?** Check out the full step-by-step developer guide:  
 > **👉 [Portal Developer Integration Guide](docs/PORTAL_INTEGRATION_GUIDE.md)**
@@ -9,7 +9,7 @@ This repository contains the central **Pydah AI Engine (`pydah-ai`)**, providing
 
 ## 1. System Architecture & Zero-Touch Self-Describing Tool Manifest
 
-With our **Self-Describing Manifest architecture**, application developers **never have to touch `pydah-ai` code** to add new tools or queries. The application portal backend is the single source of truth for its functions and permissions.
+With our **Self-Describing Manifest architecture**, application developers **never have to touch `nemo-ai` code** to add new tools or queries. The application portal backend is the single source of truth for its functions and permissions.
 
 ```
                                ┌────────────────────────────────┐
@@ -18,7 +18,7 @@ With our **Self-Describing Manifest architecture**, application developers **nev
                                                │ ChatRequest + Bearer Token
                                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│ pydah-ai (Central AI Backend)                                                           │
+│ nemo-ai (Central AI Backend)                                                            │
 │  ├── src/api.py                 -> Receives chat requests from UI                       │
 │  ├── src/tools/generic_connector.py -> Auto-discovers tools: GET /ai-tools             │
 │  ├── src/services/llm_service.py-> Orchestrates tool-calling with Gemini / OpenRouter   │
@@ -72,10 +72,10 @@ When connecting your application backend (Student Portal, Fee, Transport, HRMS) 
 
 ---
 
-## 2. Central `pydah-ai` Structure & Responsibilities
+## 2. Central `nemo-ai` Structure & Responsibilities
 
 ```text
-pydah-ai/
+nemo-ai/
 ├── src/
 │   ├── api.py                   # FastAPI chat endpoint & assistant API routes
 │   ├── config.py                # Environment & model configuration loader
