@@ -315,7 +315,7 @@ def dispatch_tool_to_application(
                 dispatch_url = f"{base}{path}"
             try:
                 req = urllib.request.Request(dispatch_url, data=data_bytes, headers=headers, method="POST")
-                with _open_url_resilient(req, timeout=12) as response:
+                with _open_url_resilient(req, timeout=35) as response:
                     resp_body = response.read().decode("utf-8")
                     try:
                         parsed = json.loads(resp_body)
