@@ -92,14 +92,6 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
                 getattr(payload, "portalUrl", None)
             )
 
-    # Automatic origin/referer inference if client omitted service_url
-    if not service_url and request is not None:
-        origin = request.headers.get("origin") or request.headers.get("referer") or ""
-        if "localhost:3000" in origin or "127.0.0.1:3000" in origin:
-            service_url = "http://localhost:4000"
-        elif "acad.pydah.edu.in" in origin:
-            service_url = "https://acad.pydah.edu.in"
-
     # If user_id, role, or service_url wasn't explicitly supplied, inspect JWT payload claims
     if token and (not user_id or not role or not service_url):
         claims = safe_decode_jwt_claims(token)
