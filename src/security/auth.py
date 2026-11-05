@@ -1,5 +1,7 @@
+import os
 import json
 import base64
+import urllib.parse
 from typing import Dict, Any, Optional
 from fastapi import Request
 from src.schemas import ChatRequest
@@ -101,6 +103,21 @@ def get_user_context(request: Optional[Request] = None, payload: Optional[ChatRe
             role = claims.get("role") or claims.get("user_role") or claims.get("type")
         if not service_url:
             service_url = claims.get("service_url") or claims.get("backend_url") or claims.get("iss")
+
+    # If service_url wasn't explicitly supplied, check request Origin / Referer header
+    if not service_url and request is not None:
+        origin_header = request.headers.get("origin") or request.headers.get("referer")
+        if origin_header:
+            try:
+                parsed = urllib.parse.urlparse(origin_header)
+                if parsed.scheme and parsed.netloc:
+                    service_url = f"{parsed.scheme}://{parsed.netloc}"
+            except Exception:
+                pass
+
+    # Final environment fallback for production deployment
+    if not service_url:
+        service_url = os.getenv("DEFAULT_SERVICE_URL") or os.getenv("APPLICATION_SERVICE_URL")
 
     if service_url:
         service_url = service_url.strip().rstrip('/')
